@@ -1,0 +1,15 @@
+# Konfigurasi lokal
+.env
+.env.*
+!.env.example
+
+# Hasil build Go
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+
+# File sementara
+/tmp/
+*.log
