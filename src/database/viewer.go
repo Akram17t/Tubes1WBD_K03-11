@@ -20,6 +20,17 @@ type Column struct {
 	Nullable bool
 }
 
+type Constraint struct {
+	Name       string
+	Type       string
+	Definition string
+}
+
+type Index struct {
+	Name       string
+	Definition string
+}
+
 // GetSchemas mengambil schema pengguna yang terlihat oleh akun PostgreSQL
 func GetSchemas(ctx context.Context, db *sql.DB) ([]string, error) {
 	rows, err := db.QueryContext(ctx, `
@@ -115,6 +126,80 @@ func GetColumns(ctx context.Context, db *sql.DB, schema, table string) ([]Column
 		return nil, err
 	}
 	return columns, nil
+}
+
+// GetConstraints mengambil nama, jenis, dan definisi SQL constraint tabel
+func GetConstraints(ctx context.Context, db *sql.DB, schema, table string) ([]Constraint, error) {
+	if err := checkTable(ctx, db, schema, table); err != nil {
+		return nil, err
+	}
+
+	rows, err := db.QueryContext(ctx, `
+		SELECT c.conname,
+		       CASE c.contype
+		         WHEN 'p' THEN 'PRIMARY KEY'
+		         WHEN 'f' THEN 'FOREIGN KEY'
+		         WHEN 'u' THEN 'UNIQUE'
+		         WHEN 'c' THEN 'CHECK'
+		         WHEN 'x' THEN 'EXCLUDE'
+		         WHEN 'n' THEN 'NOT NULL'
+		         ELSE c.contype::text
+		       END,
+		       pg_catalog.pg_get_constraintdef(c.oid)
+		FROM pg_catalog.pg_constraint AS c
+		JOIN pg_catalog.pg_class AS t ON t.oid = c.conrelid
+		JOIN pg_catalog.pg_namespace AS n ON n.oid = t.relnamespace
+		WHERE n.nspname = $1 AND t.relname = $2
+		ORDER BY c.conname
+	`, schema, table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	constraints := []Constraint{}
+	for rows.Next() {
+		var constraint Constraint
+		if err := rows.Scan(&constraint.Name, &constraint.Type, &constraint.Definition); err != nil {
+			return nil, err
+		}
+		constraints = append(constraints, constraint)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return constraints, nil
+}
+
+// GetIndexes mengambil nama index dan definisi CREATE INDEX-nya
+func GetIndexes(ctx context.Context, db *sql.DB, schema, table string) ([]Index, error) {
+	if err := checkTable(ctx, db, schema, table); err != nil {
+		return nil, err
+	}
+
+	rows, err := db.QueryContext(ctx, `
+		SELECT indexname, indexdef
+		FROM pg_catalog.pg_indexes
+		WHERE schemaname = $1 AND tablename = $2
+		ORDER BY indexname
+	`, schema, table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	indexes := []Index{}
+	for rows.Next() {
+		var index Index
+		if err := rows.Scan(&index.Name, &index.Definition); err != nil {
+			return nil, err
+		}
+		indexes = append(indexes, index)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return indexes, nil
 }
 
 func checkSchema(ctx context.Context, db *sql.DB, schema string) error {
