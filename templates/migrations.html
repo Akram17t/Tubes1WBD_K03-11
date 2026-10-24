@@ -1,1 +1,197 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, shrink-to-fit=no"
+    />
+    <title>Migration | DB Platform</title>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap"
+    />
+    <link rel="stylesheet" href="/static/login/bootstrap-login-form.min.css" />
+  </head>
+  <body>
+    <section class="min-vh-100" style="background-color: #508bfc">
+      <div class="container py-5">
+        <div class="row d-flex justify-content-center">
+          <div class="col-12 col-xl-10">
+            <div class="card shadow-2-strong" style="border-radius: 1rem">
+              <main class="card-body p-4 p-md-5">
+                <nav class="d-flex flex-wrap gap-3 mb-4" aria-label="Navigasi migration">
+                  <a href="/databases/{{.DatabaseID}}">Database #{{.DatabaseID}}</a>
+                  <a href="/databases/{{.DatabaseID}}/migrations">Daftar migration</a>
+                </nav>
 
+                {{if eq .Page "list"}}
+                <h1 class="h3 mb-4">Migration database #{{.DatabaseID}}</h1>
+                {{if .CanEdit}}
+                <a class="btn btn-primary mb-4" href="/databases/{{.DatabaseID}}/migrations/new">
+                  Buat migration
+                </a>
+                {{end}}
+                {{if .Migrations}}
+                <div class="table-responsive" role="region" aria-label="Daftar migration" tabindex="0">
+                  <table class="table align-middle">
+                    <thead>
+                      <tr>
+                        <th scope="col">Versi</th>
+                        <th scope="col">Judul</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Pembuat</th>
+                        <th scope="col">Dibuat</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {{range .Migrations}}
+                      <tr>
+                        <td>{{if .Version.Valid}}{{.Version.Int64}}{{else}}—{{end}}</td>
+                        <td class="text-break">
+                          <a href="/databases/{{$.DatabaseID}}/migrations/{{.ID}}">{{.Title}}</a>
+                        </td>
+                        <td>{{.Status}}</td>
+                        <td class="text-nowrap">User #{{.CreatedBy}}</td>
+                        <td class="text-nowrap">{{.CreatedAt.Format "02 Jan 2006 15:04:05 MST"}}</td>
+                      </tr>
+                      {{end}}
+                    </tbody>
+                  </table>
+                </div>
+                {{else}}
+                <p class="text-muted mb-0">Belum ada migration untuk database ini.</p>
+                {{end}}
+
+                {{else if or (eq .Page "new") (eq .Page "edit")}}
+                <h1 class="h3 mb-4">{{if eq .Page "new"}}Buat migration{{else}}Edit migration{{end}}</h1>
+                <form
+                  method="post"
+                  action="/databases/{{.DatabaseID}}/migrations{{if eq .Page "edit"}}/{{.Migration.ID}}/update{{end}}"
+                >
+                  <div class="form-outline mb-4">
+                    <input
+                      type="text"
+                      id="title"
+                      name="title"
+                      value="{{with .Migration}}{{.Title}}{{end}}"
+                      class="form-control form-control-lg"
+                      maxlength="200"
+                      required
+                    />
+                    <label class="form-label" for="title">Judul</label>
+                  </div>
+
+                  <div class="form-outline mb-4">
+                    <textarea
+                      id="description"
+                      name="description"
+                      class="form-control form-control-lg"
+                      rows="3"
+                    >{{with .Migration}}{{if .Description.Valid}}{{.Description.String}}{{end}}{{end}}</textarea>
+                    <label class="form-label" for="description">Deskripsi (opsional)</label>
+                  </div>
+
+                  <div class="form-outline mb-4">
+                    <textarea
+                      id="sql_content"
+                      name="sql_content"
+                      class="form-control form-control-lg font-monospace"
+                      rows="12"
+                      spellcheck="false"
+                      required
+                    >{{with .Migration}}{{.SQLContent}}{{end}}</textarea>
+                    <label class="form-label" for="sql_content">SQL migration</label>
+                  </div>
+
+                  <div class="d-flex flex-wrap gap-3">
+                    <button class="btn btn-primary btn-lg" type="submit">
+                      {{if eq .Page "new"}}Simpan draft{{else}}Simpan perubahan{{end}}
+                    </button>
+                    <a
+                      class="btn btn-light btn-lg"
+                      href="/databases/{{.DatabaseID}}/migrations{{if eq .Page "edit"}}/{{.Migration.ID}}{{end}}"
+                    >Batal</a>
+                  </div>
+                </form>
+
+                {{else if eq .Page "detail"}}
+                {{with .Migration}}
+                <h1 class="h3 text-break mb-4">{{.Title}}</h1>
+                {{if and $.CanEdit (or (eq .Status "draft") (eq .Status "failed"))}}
+                <a class="btn btn-primary mb-4" href="/databases/{{$.DatabaseID}}/migrations/{{.ID}}/edit">
+                  Edit migration
+                </a>
+                {{end}}
+                <dl class="row mb-4">
+                  <dt class="col-sm-3">Status</dt><dd class="col-sm-9">{{.Status}}</dd>
+                  <dt class="col-sm-3">Versi</dt><dd class="col-sm-9">{{if .Version.Valid}}{{.Version.Int64}}{{else}}Belum diberikan{{end}}</dd>
+                  <dt class="col-sm-3">Pembuat</dt><dd class="col-sm-9">User #{{.CreatedBy}}</dd>
+                  <dt class="col-sm-3">Dibuat</dt><dd class="col-sm-9">{{.CreatedAt.Format "02 Jan 2006 15:04:05 MST"}}</dd>
+                  <dt class="col-sm-3">Diperbarui</dt><dd class="col-sm-9">{{.UpdatedAt.Format "02 Jan 2006 15:04:05 MST"}}</dd>
+                  <dt class="col-sm-3">Deskripsi</dt><dd class="col-sm-9 text-break">{{if .Description.Valid}}{{.Description.String}}{{else}}—{{end}}</dd>
+                </dl>
+                <h2 class="h5 mb-3">SQL migration</h2>
+                <pre class="bg-light p-3 rounded mb-4"><code>{{.SQLContent}}</code></pre>
+                {{end}}
+
+                <h2 class="h5 mb-3">Riwayat eksekusi</h2>
+                {{if .Executions}}
+                <div class="table-responsive" role="region" aria-label="Riwayat eksekusi" tabindex="0">
+                  <table class="table align-middle">
+                    <thead>
+                      <tr>
+                        <th scope="col">Percobaan</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Pelaksana</th>
+                        <th scope="col">Mulai</th>
+                        <th scope="col">Selesai</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {{range .Executions}}
+                      <tr>
+                        <td><a href="/databases/{{$.DatabaseID}}/migrations/{{$.Migration.ID}}/executions/{{.ID}}">#{{.ID}}</a></td>
+                        <td>{{.Status}}</td>
+                        <td class="text-nowrap">User #{{.ExecutedBy}}</td>
+                        <td class="text-nowrap">{{.StartedAt.Format "02 Jan 2006 15:04:05 MST"}}</td>
+                        <td class="text-nowrap">{{if .FinishedAt.Valid}}{{.FinishedAt.Time.Format "02 Jan 2006 15:04:05 MST"}}{{else}}Belum selesai{{end}}</td>
+                      </tr>
+                      {{end}}
+                    </tbody>
+                  </table>
+                </div>
+                {{else}}
+                <p class="text-muted mb-0">Belum ada percobaan eksekusi.</p>
+                {{end}}
+
+                {{else if eq .Page "execution"}}
+                {{with .Execution}}
+                <h1 class="h3 mb-3">Percobaan eksekusi #{{.ID}}</h1>
+                <p class="mb-4"><a href="/databases/{{$.DatabaseID}}/migrations/{{$.MigrationID}}">Kembali ke detail migration</a></p>
+                <dl class="row mb-4">
+                  <dt class="col-sm-3">Status</dt><dd class="col-sm-9">{{.Status}}</dd>
+                  <dt class="col-sm-3">Pelaksana</dt><dd class="col-sm-9">User #{{.ExecutedBy}}</dd>
+                  <dt class="col-sm-3">Mulai</dt><dd class="col-sm-9">{{.StartedAt.Format "02 Jan 2006 15:04:05 MST"}}</dd>
+                  <dt class="col-sm-3">Selesai</dt><dd class="col-sm-9">{{if .FinishedAt.Valid}}{{.FinishedAt.Time.Format "02 Jan 2006 15:04:05 MST"}}{{else}}Belum selesai{{end}}</dd>
+                </dl>
+                {{if .ErrorMessage.Valid}}
+                <div class="alert alert-danger text-start" role="alert">
+                  <h2 class="h5">Pesan kegagalan</h2>
+                  <pre class="mb-0">{{.ErrorMessage.String}}</pre>
+                </div>
+                {{end}}
+                <h2 class="h5 mb-3">SQL yang dijalankan</h2>
+                <pre class="bg-light p-3 rounded mb-0"><code>{{.SQLSnapshot}}</code></pre>
+                {{end}}
+                {{end}}
+              </main>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <script src="/static/login/mdb.min.js"></script>
+  </body>
+</html>
