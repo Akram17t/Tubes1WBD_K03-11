@@ -160,8 +160,8 @@ func (h *Handler) login(c *gin.Context) {
 	}
 
 	// session lama di browser ini dicabut, login selalu dapat identifier baru
-	if sessionID, ok := currentSessionID(c); ok {
-		if err := revokeSession(ctx, h.DB, sessionID); err != nil {
+	if session, ok := currentSession(c); ok {
+		if err := revokeSession(ctx, h.DB, session.ID); err != nil {
 			c.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
@@ -208,8 +208,8 @@ func (h *Handler) checkCredentials(ctx context.Context, username, password strin
 
 // cabut session di backend, hapus cookie, balik ke login
 func (h *Handler) logout(c *gin.Context) {
-	if sessionID, ok := currentSessionID(c); ok {
-		if err := revokeSession(c.Request.Context(), h.DB, sessionID); err != nil {
+	if session, ok := currentSession(c); ok {
+		if err := revokeSession(c.Request.Context(), h.DB, session.ID); err != nil {
 			c.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}

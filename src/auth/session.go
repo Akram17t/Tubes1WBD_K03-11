@@ -26,6 +26,12 @@ const (
 	sessionKey        = "auth.session"
 )
 
+// activeSession adalah session valid yang dititipkan middleware ke context
+type activeSession struct {
+	ID         int64
+	CSRFSecret []byte
+}
+
 // hash token pakai SHA-256, database cuma nyimpen hasil ini
 func hashToken(token string) []byte {
 	sum := sha256.Sum256([]byte(token))
@@ -66,11 +72,11 @@ func createSession(ctx context.Context, db *sql.DB, userID int64, privilegeVersi
 
 // cari session dari token cookie, sql.ErrNoRows kalau token ga valid,
 // kadaluarsa, dicabut, atau user-nya nonaktif
-func findSession(ctx context.Context, db *sql.DB, token string, config SessionConfig) (int64, *User, error) {
-	var sessionID int64
+func findSession(ctx context.Context, db *sql.DB, token string, config SessionConfig) (*activeSession, *User, error) {
+	session := &activeSession{}
 	user := &User{}
 	err := db.QueryRowContext(ctx, `
-		SELECT s.id, u.id, u.username, u.display_name, u.is_platform_admin
+		SELECT s.id, s.csrf_secret, u.id, u.username, u.display_name, u.is_platform_admin
 		FROM session_tokens st
 		JOIN sessions s ON s.id = st.session_id
 		JOIN users u ON u.id = s.user_id
@@ -81,12 +87,12 @@ func findSession(ctx context.Context, db *sql.DB, token string, config SessionCo
 		  AND s.last_activity_at > now() - make_interval(secs => $2)
 		  AND u.is_active
 	`, hashToken(token), config.IdleTimeout.Seconds()).Scan(
-		&sessionID, &user.ID, &user.Username, &user.DisplayName, &user.IsPlatformAdmin,
+		&session.ID, &session.CSRFSecret, &user.ID, &user.Username, &user.DisplayName, &user.IsPlatformAdmin,
 	)
 	if err != nil {
-		return 0, nil, err
+		return nil, nil, err
 	}
-	return sessionID, user, nil
+	return session, user, nil
 }
 
 // catat aktivitas terakhir biar idle timeout keitung dari request terakhir
@@ -104,14 +110,14 @@ func revokeSession(ctx context.Context, db *sql.DB, sessionID int64) error {
 	return err
 }
 
-// ambil id session yang lagi dipakai request ini
-func currentSessionID(c *gin.Context) (int64, bool) {
+// ambil session yang lagi dipakai request ini
+func currentSession(c *gin.Context) (*activeSession, bool) {
 	value, exists := c.Get(sessionKey)
 	if !exists {
-		return 0, false
+		return nil, false
 	}
-	sessionID, ok := value.(int64)
-	return sessionID, ok
+	session, ok := value.(*activeSession)
+	return session, ok
 }
 
 // kirim token ke browser lewat cookie HttpOnly
@@ -150,7 +156,7 @@ func (h *Handler) Session() gin.HandlerFunc {
 		}
 
 		ctx := c.Request.Context()
-		sessionID, user, err := findSession(ctx, h.DB, token, h.Config)
+		session, user, err := findSession(ctx, h.DB, token, h.Config)
 		if errors.Is(err, sql.ErrNoRows) {
 			clearSessionCookie(c, h.Config.SecureCookie)
 			c.Next()
@@ -161,12 +167,12 @@ func (h *Handler) Session() gin.HandlerFunc {
 			return
 		}
 
-		if err := touchSession(ctx, h.DB, sessionID); err != nil {
+		if err := touchSession(ctx, h.DB, session.ID); err != nil {
 			c.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
 
-		c.Set(sessionKey, sessionID)
+		c.Set(sessionKey, session)
 		setCurrentUser(c, user)
 		c.Next()
 	}

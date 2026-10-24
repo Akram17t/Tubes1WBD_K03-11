@@ -29,12 +29,26 @@ func newAuthRouter(db *sql.DB) *gin.Engine {
 	r.LoadHTMLFiles("../../templates/login.html")
 
 	h := &Handler{DB: db, Config: testSessionConfig}
-	r.Use(h.Session())
+	r.Use(h.Session(), CSRF())
 	h.RegisterRoutes(r)
 	r.GET("/databases", RequireLogin(), func(c *gin.Context) {
 		c.String(http.StatusOK, "daftar database")
 	})
+	// pura-pura halaman yang punya form, isinya cuma token CSRF
+	r.GET("/form", RequireLogin(), func(c *gin.Context) {
+		c.String(http.StatusOK, CSRFToken(c))
+	})
 	return r
+}
+
+// ambil token CSRF dari "halaman form" pakai cookie session yang dikasih
+func csrfTokenFor(t *testing.T, r *gin.Engine, sessionCookie *http.Cookie) string {
+	t.Helper()
+	w := send(r, http.MethodGet, "/form", nil, sessionCookie)
+	if w.Code != http.StatusOK || w.Body.Len() == 0 {
+		t.Fatalf("gagal ambil token CSRF: status %d", w.Code)
+	}
+	return w.Body.String()
 }
 
 // bikin user dengan password asli (di-hash), balikin id-nya
@@ -55,7 +69,7 @@ func insertUserWithPassword(t *testing.T, db *sql.DB, username, password string)
 	return id
 }
 
-// kirim request ke router, cookie session boleh kosong
+// kirim request ke router seolah dari halaman kita sendiri, cookie session boleh kosong
 func send(r *gin.Engine, method, path string, form url.Values, sessionCookie *http.Cookie) *httptest.ResponseRecorder {
 	var body *bytes.Buffer = &bytes.Buffer{}
 	if form != nil {
@@ -65,6 +79,8 @@ func send(r *gin.Engine, method, path string, form url.Values, sessionCookie *ht
 	if form != nil {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
+	// httptest pakai host example.com, jadi Origin-nya disamain
+	req.Header.Set("Origin", "http://example.com")
 	if sessionCookie != nil {
 		req.AddCookie(sessionCookie)
 	}
@@ -120,7 +136,8 @@ func TestLoginAndLogout(t *testing.T) {
 		t.Errorf("halaman terlindungi dengan cookie: dapat %d, harusnya 200", w.Code)
 	}
 
-	w = send(r, http.MethodPost, "/logout", url.Values{}, cookie)
+	token := csrfTokenFor(t, r, cookie)
+	w = send(r, http.MethodPost, "/logout", url.Values{"csrf_token": {token}}, cookie)
 	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/login" {
 		t.Errorf("logout: dapat %d ke %q", w.Code, w.Header().Get("Location"))
 	}
