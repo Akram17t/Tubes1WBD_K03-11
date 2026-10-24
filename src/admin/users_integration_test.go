@@ -44,7 +44,7 @@ func openTestDB(t *testing.T) *sql.DB {
 func newAdminRouter(db *sql.DB) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.LoadHTMLFiles("../../templates/login.html", "../../templates/admin_users.html", "../../templates/admin_user_form.html")
+	r.LoadHTMLGlob("../../templates/*.html")
 	auth.RegisterRoutes(r, db, auth.SessionConfig{
 		IdleTimeout:      30 * time.Minute,
 		AbsoluteTimeout:  8 * time.Hour,

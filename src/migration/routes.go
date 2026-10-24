@@ -66,7 +66,7 @@ func (h handlers) new(c *gin.Context) {
 		respondError(c, err)
 		return
 	}
-	c.HTML(http.StatusOK, "migrations.html", gin.H{"Page": "new", "DatabaseID": dbID})
+	c.HTML(http.StatusOK, "migrations.html", gin.H{"Page": "new", "DatabaseID": dbID, "CSRFToken": auth.CSRFToken(c)})
 }
 
 func (h handlers) create(c *gin.Context) {
@@ -131,7 +131,7 @@ func (h handlers) edit(c *gin.Context) {
 		respondError(c, ErrConflict)
 		return
 	}
-	c.HTML(http.StatusOK, "migrations.html", gin.H{"Page": "edit", "DatabaseID": dbID, "Migration": migration})
+	c.HTML(http.StatusOK, "migrations.html", gin.H{"Page": "edit", "DatabaseID": dbID, "Migration": migration, "CSRFToken": auth.CSRFToken(c)})
 }
 
 func (h handlers) update(c *gin.Context) {

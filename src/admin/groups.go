@@ -2,7 +2,6 @@ package admin
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"net/http"
 	"strconv"
@@ -55,7 +54,7 @@ type groupActions interface {
 type groupHandler struct{ service groupActions }
 
 func registerGroupRoutes(router gin.IRouter, service groupActions) {
-	routes := router.Group("/admin/groups", auth.RequireLogin(), auth.RequireAdmin(), groupCSRF)
+	routes := router.Group("/admin/groups", auth.RequireLogin(), auth.RequireAdmin())
 	handler := groupHandler{service: service}
 	routes.GET("", handler.list)
 	routes.GET("/new", handler.new)
@@ -80,27 +79,6 @@ func (h groupHandler) list(c *gin.Context) {
 
 func (h groupHandler) new(c *gin.Context) {
 	h.form(c, http.StatusOK, Group{}, "")
-}
-
-// All group mutations use the trusted token supplied by the session/CSRF module.
-func groupCSRF(c *gin.Context) {
-	if c.Request.Method != http.MethodPost {
-		c.Next()
-		return
-	}
-	if err := c.Request.ParseForm(); err != nil {
-		c.AbortWithStatus(http.StatusBadRequest)
-		return
-	}
-
-	// The session/CSRF module supplies the trusted token in the Gin context.
-	expected := c.GetString("csrf_token")
-	provided := c.Request.PostForm.Get("csrf_token")
-	if expected == "" || subtle.ConstantTimeCompare([]byte(expected), []byte(provided)) != 1 {
-		c.AbortWithStatus(http.StatusForbidden)
-		return
-	}
-	c.Next()
 }
 
 func (h groupHandler) create(c *gin.Context) {
@@ -216,7 +194,7 @@ func (h groupHandler) editForm(c *gin.Context, id int64, status int, message str
 	}
 	c.HTML(status, "group_edit.html", gin.H{
 		"Group": data.Group, "Members": data.Members, "AvailableUsers": data.AvailableUsers,
-		"Error": message, "CSRFToken": c.GetString("csrf_token"),
+		"Error": message, "CSRFToken": auth.CSRFToken(c),
 	})
 }
 
@@ -235,7 +213,7 @@ func groupEditURL(id int64) string {
 
 func (h groupHandler) form(c *gin.Context, status int, group Group, message string) {
 	c.HTML(status, "group_new.html", gin.H{
-		"Group": group, "Error": message, "CSRFToken": c.GetString("csrf_token"),
+		"Group": group, "Error": message, "CSRFToken": auth.CSRFToken(c),
 	})
 }
 
