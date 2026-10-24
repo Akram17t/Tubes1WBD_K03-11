@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Buat group</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <main>
+        <h1>Buat group</h1>
+        {{if .Error}}<p role="alert">{{.Error}}</p>{{end}}
+        <form method="post" action="/admin/groups">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <p>
+                <label for="name">Nama group</label>
+                <input id="name" name="name" type="text" maxlength="100" required value="{{.Group.Name}}">
+            </p>
+            <p>
+                <label for="description">Deskripsi (opsional)</label>
+                <textarea id="description" name="description" rows="4">{{.Group.Description}}</textarea>
+            </p>
+            <button type="submit">Buat group</button>
+            <a href="/admin/groups">Kembali ke daftar group</a>
+        </form>
+    </main>
+</body>
+</html>

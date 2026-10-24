@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func RegisterRoutes(router gin.IRoutes, _ *sql.DB) {
+func RegisterRoutes(router gin.IRouter, db *sql.DB) {
 	router.GET("/admin/users", notImplemented)
 	router.GET("/admin/users/new", notImplemented)
 	router.POST("/admin/users", notImplemented)
@@ -16,14 +16,7 @@ func RegisterRoutes(router gin.IRoutes, _ *sql.DB) {
 	router.POST("/admin/users/:userID/deactivate", notImplemented)
 	router.POST("/admin/users/:userID/activate", notImplemented)
 
-	router.GET("/admin/groups", notImplemented)
-	router.GET("/admin/groups/new", notImplemented)
-	router.POST("/admin/groups", notImplemented)
-	router.GET("/admin/groups/:groupID/edit", notImplemented)
-	router.POST("/admin/groups/:groupID/update", notImplemented)
-	router.POST("/admin/groups/:groupID/delete", notImplemented)
-	router.POST("/admin/groups/:groupID/members", notImplemented)
-	router.POST("/admin/groups/:groupID/members/:userID/remove", notImplemented)
+	registerGroupRoutes(router, groupService{db: db, store: groupRepository{db: db}})
 
 	router.GET("/admin/databases", notImplemented)
 	router.GET("/admin/databases/new", notImplemented)
