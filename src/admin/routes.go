@@ -27,9 +27,7 @@ func RegisterRoutes(router gin.IRouter, db *sql.DB) {
 	router.POST("/admin/databases/:dbID/deactivate", notImplemented)
 	router.POST("/admin/databases/:dbID/activate", notImplemented)
 
-	router.GET("/admin/groups/:groupID/database-access", notImplemented)
-	router.POST("/admin/groups/:groupID/database-access", notImplemented)
-	router.POST("/admin/groups/:groupID/database-access/:dbID/revoke", notImplemented)
+	registerDatabaseAccessRoutes(router, db)
 }
 
 func notImplemented(c *gin.Context) {

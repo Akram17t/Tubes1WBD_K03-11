@@ -10,6 +10,7 @@
     <main>
         <h1>Edit group: {{.Group.Name}}</h1>
         <p><a href="/admin/groups">Kembali ke daftar group</a></p>
+        <p><a href="/admin/groups/{{.Group.ID}}/database-access">Kelola akses database group</a></p>
         {{if .Error}}<p role="alert">{{.Error}}</p>{{end}}
         <form method="post" action="/admin/groups/{{.Group.ID}}/update">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
