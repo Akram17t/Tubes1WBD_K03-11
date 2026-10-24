@@ -79,6 +79,7 @@ func GetTables(ctx context.Context, db *sql.DB, schema string) ([]string, error)
 		SELECT table_name
 		FROM information_schema.tables
 		WHERE table_schema = $1 AND table_type = 'BASE TABLE'
+		  AND NOT (table_schema = 'public' AND table_name = '_dbplatform_migrations')
 		ORDER BY table_name
 	`, schema)
 	if err != nil {
@@ -283,6 +284,7 @@ func checkTable(ctx context.Context, db *sql.DB, schema, table string) error {
 		SELECT EXISTS (
 			SELECT 1 FROM information_schema.tables
 			WHERE table_schema = $1 AND table_name = $2 AND table_type = 'BASE TABLE'
+			  AND NOT (table_schema = 'public' AND table_name = '_dbplatform_migrations')
 		)
 	`, schema, table).Scan(&exists)
 	if err != nil {

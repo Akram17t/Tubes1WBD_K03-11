@@ -6,6 +6,10 @@ import (
 	"errors"
 )
 
+type queryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
 // Semua aturan izin ada di file ini. Modul lain cukup memanggil Authorize.
 
 type Action string
@@ -51,7 +55,7 @@ func allowed(level Level, action Action) bool {
 }
 
 // cari hak tertinggi user ke satu database dari semua group-nya
-func EffectiveLevel(ctx context.Context, db *sql.DB, userID, dbID int64) (Level, error) {
+func EffectiveLevel(ctx context.Context, db queryer, userID, dbID int64) (Level, error) {
 	var level sql.NullInt64
 	err := db.QueryRowContext(ctx, `
 		SELECT MAX(CASE gda.access_level WHEN 'edit' THEN 2 WHEN 'view' THEN 1 END)
@@ -73,7 +77,7 @@ func EffectiveLevel(ctx context.Context, db *sql.DB, userID, dbID int64) (Level,
 
 // pintu utama cek izin, balikin ErrForbidden kalau ditolak.
 // dbID diabaikan untuk ManagePlatform.
-func Authorize(ctx context.Context, db *sql.DB, user *User, action Action, dbID int64) error {
+func Authorize(ctx context.Context, db queryer, user *User, action Action, dbID int64) error {
 	if user == nil {
 		return ErrForbidden
 	}
