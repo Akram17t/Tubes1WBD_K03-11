@@ -153,6 +153,49 @@ func UpdateMigration(ctx context.Context, db *sql.DB, user *auth.User, dbID, mig
 	return nil, ErrConflict
 }
 
+// GetExecutions mengambil riwayat percobaan eksekusi pada satu migration
+func GetExecutions(ctx context.Context, db *sql.DB, user *auth.User, dbID, migrationID int64) ([]Execution, error) {
+	if _, err := GetMigration(ctx, db, user, dbID, migrationID); err != nil {
+		return nil, err
+	}
+	rows, err := db.QueryContext(ctx, `
+		SELECT `+executionColumns+` FROM migration_executions
+		WHERE migration_id = $1 ORDER BY started_at DESC, id DESC
+	`, migrationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	executions := []Execution{}
+	for rows.Next() {
+		execution, err := scanExecution(rows)
+		if err != nil {
+			return nil, err
+		}
+		executions = append(executions, *execution)
+	}
+	return executions, rows.Err()
+}
+
+// GetExecution mengambil detail percobaan milik migration dan database tersebut
+func GetExecution(ctx context.Context, db *sql.DB, user *auth.User, dbID, migrationID, executionID int64) (*Execution, error) {
+	if executionID < 1 {
+		return nil, ErrInvalidInput
+	}
+	if _, err := GetMigration(ctx, db, user, dbID, migrationID); err != nil {
+		return nil, err
+	}
+	execution, err := scanExecution(db.QueryRowContext(ctx, `
+		SELECT `+executionColumns+` FROM migration_executions
+		WHERE migration_id = $1 AND id = $2
+	`, migrationID, executionID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return execution, err
+}
+
 // ExecuteMigration menjalankan SQL pada target dan mencatat hasil pada database platform
 func ExecuteMigration(ctx context.Context, db, targetDB *sql.DB, user *auth.User, dbID, migrationID int64) (*Execution, error) {
 	if dbID < 1 || migrationID < 1 || db == nil || targetDB == nil || db == targetDB {
