@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{if .IsNew}}Tambah user{{else}}Edit user{{end}} | DB Platform</title>
+    <link rel="stylesheet" href="/static/login/bootstrap-login-form.min.css" />
+  </head>
+  <body class="bg-light">
+    <nav class="navbar navbar-light bg-white shadow-sm mb-4">
+      <div class="container">
+        <a href="/admin/users" class="navbar-brand">DB Platform</a>
+        <form method="post" action="/logout" class="d-flex align-items-center">
+          <span class="me-3">{{.User.DisplayName}}</span>
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+          <button type="submit" class="btn btn-outline-dark btn-sm">Logout</button>
+        </form>
+      </div>
+    </nav>
+
+    <main class="container" style="max-width: 540px">
+      <h3 class="mb-3">{{if .IsNew}}Tambah user{{else}}Edit user{{end}}</h3>
+
+      {{if .Error}}
+      <div class="alert alert-danger">{{.Error}}</div>
+      {{end}}
+
+      <form method="post" action="{{.Action}}" class="card card-body">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+
+        <label class="form-label" for="username">Username</label>
+        <input type="text" id="username" name="username" value="{{.Form.Username}}" class="form-control mb-3" maxlength="100" required />
+
+        <label class="form-label" for="display_name">Nama tampilan</label>
+        <input type="text" id="display_name" name="display_name" value="{{.Form.DisplayName}}" class="form-control mb-3" maxlength="150" />
+
+        <label class="form-label" for="password">Password</label>
+        <input type="password" id="password" name="password" class="form-control" minlength="8" maxlength="72" autocomplete="new-password" {{if .IsNew}}required{{end}} />
+        <div class="form-text mb-3">
+          Minimal 8 karakter.{{if not .IsNew}} Kosongkan kalau tidak diganti. Ganti password akan mengeluarkan user dari semua session.{{end}}
+        </div>
+
+        <div class="form-check mb-4">
+          <input type="checkbox" id="is_platform_admin" name="is_platform_admin" class="form-check-input" {{if .Form.IsPlatformAdmin}}checked{{end}} />
+          <label class="form-check-label" for="is_platform_admin">Platform Admin</label>
+        </div>
+
+        <div class="d-flex gap-2">
+          <button type="submit" class="btn btn-dark">Simpan</button>
+          <a href="/admin/users" class="btn btn-link">Batal</a>
+        </div>
+      </form>
+    </main>
+  </body>
+</html>
