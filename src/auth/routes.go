@@ -7,14 +7,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RegisterRoutes owns authentication routes until their handlers are implemented.
-func RegisterRoutes(router gin.IRoutes, _ *sql.DB) {
-	router.GET("/", notImplemented)
-	router.GET("/login", notImplemented)
-	router.POST("/login", notImplemented)
-	router.POST("/logout", notImplemented)
+// pasang middleware session + CSRF ke semua route, lalu daftarin route login dan logout.
+// Harus dipanggil sebelum package lain daftarin route-nya.
+func RegisterRoutes(router gin.IRouter, db *sql.DB, config SessionConfig) {
+	h := &Handler{DB: db, Config: config}
+	router.Use(h.Session(), CSRF())
+
+	router.GET("/", h.home)
+	router.GET("/login", h.showLogin)
+	router.POST("/login", h.login)
+	router.POST("/logout", RequireLogin(), h.logout)
 }
 
-func notImplemented(c *gin.Context) {
-	c.String(http.StatusNotImplemented, "Not Implemented")
+// arahin ke daftar database kalau sudah login, kalau belum ke halaman login
+func (h *Handler) home(c *gin.Context) {
+	if _, ok := CurrentUser(c); ok {
+		c.Redirect(http.StatusSeeOther, "/databases")
+		return
+	}
+	c.Redirect(http.StatusSeeOther, "/login")
 }

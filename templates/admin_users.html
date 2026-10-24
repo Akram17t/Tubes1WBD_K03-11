@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Users | DB Platform</title>
+    <link rel="stylesheet" href="/static/login/bootstrap-login-form.min.css" />
+  </head>
+  <body class="bg-light">
+    <nav class="navbar navbar-light bg-white shadow-sm mb-4">
+      <div class="container">
+        <span class="navbar-brand">DB Platform</span>
+        <form method="post" action="/logout" class="d-flex align-items-center">
+          <span class="me-3">{{.User.DisplayName}}</span>
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+          <button type="submit" class="btn btn-outline-dark btn-sm">Logout</button>
+        </form>
+      </div>
+    </nav>
+
+    <main class="container">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="mb-0">Users</h3>
+        <a href="/admin/users/new" class="btn btn-dark">Tambah user</a>
+      </div>
+
+      <div class="card">
+        <table class="table mb-0">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Nama</th>
+              <th>Peran</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Users}}
+            <tr>
+              <td>{{.Username}}</td>
+              <td>{{.DisplayName}}</td>
+              <td>{{if .IsPlatformAdmin}}<span class="badge bg-dark">Admin</span>{{else}}User{{end}}</td>
+              <td>{{if .IsActive}}<span class="badge bg-success">Aktif</span>{{else}}<span class="badge bg-secondary">Nonaktif</span>{{end}}</td>
+              <td class="text-end">
+                <a href="/admin/users/{{.ID}}/edit" class="btn btn-link btn-sm">Edit</a>
+                {{if ne .ID $.User.ID}}
+                <form method="post" action="/admin/users/{{.ID}}/{{if .IsActive}}deactivate{{else}}activate{{end}}" class="d-inline">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                  <button type="submit" class="btn btn-sm {{if .IsActive}}btn-outline-danger{{else}}btn-outline-success{{end}}">
+                    {{if .IsActive}}Nonaktifkan{{else}}Aktifkan{{end}}
+                  </button>
+                </form>
+                {{end}}
+              </td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </body>
+</html>
