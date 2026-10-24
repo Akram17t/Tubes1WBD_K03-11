@@ -48,7 +48,12 @@ func (h handlers) list(c *gin.Context) {
 		respondError(c, err)
 		return
 	}
-	c.HTML(http.StatusOK, "migrations.html", gin.H{"Page": "list", "DatabaseID": dbID, "Migrations": migrations})
+	editErr := auth.Authorize(c.Request.Context(), h.db, user, auth.EditMigration, dbID)
+	if editErr != nil && !errors.Is(editErr, auth.ErrForbidden) {
+		respondError(c, editErr)
+		return
+	}
+	c.HTML(http.StatusOK, "migrations.html", gin.H{"Page": "list", "DatabaseID": dbID, "Migrations": migrations, "CanEdit": editErr == nil})
 }
 
 func (h handlers) new(c *gin.Context) {
@@ -99,7 +104,12 @@ func (h handlers) detail(c *gin.Context) {
 		respondError(c, err)
 		return
 	}
-	c.HTML(http.StatusOK, "migrations.html", gin.H{"Page": "detail", "DatabaseID": dbID, "Migration": migration, "Executions": executions})
+	editErr := auth.Authorize(c.Request.Context(), h.db, user, auth.EditMigration, dbID)
+	if editErr != nil && !errors.Is(editErr, auth.ErrForbidden) {
+		respondError(c, editErr)
+		return
+	}
+	c.HTML(http.StatusOK, "migrations.html", gin.H{"Page": "detail", "DatabaseID": dbID, "Migration": migration, "Executions": executions, "CanEdit": editErr == nil})
 }
 
 func (h handlers) edit(c *gin.Context) {
