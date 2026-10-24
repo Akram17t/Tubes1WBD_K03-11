@@ -22,14 +22,7 @@ func RegisterRoutes(r gin.IRouter, db *sql.DB) {
 	router.POST("/admin/users/:userID/deactivate", users.deactivate)
 	router.POST("/admin/users/:userID/activate", users.activate)
 
-	router.GET("/admin/groups", notImplemented)
-	router.GET("/admin/groups/new", notImplemented)
-	router.POST("/admin/groups", notImplemented)
-	router.GET("/admin/groups/:groupID/edit", notImplemented)
-	router.POST("/admin/groups/:groupID/update", notImplemented)
-	router.POST("/admin/groups/:groupID/delete", notImplemented)
-	router.POST("/admin/groups/:groupID/members", notImplemented)
-	router.POST("/admin/groups/:groupID/members/:userID/remove", notImplemented)
+	registerGroupRoutes(router, groupService{db: db, store: groupRepository{db: db}})
 
 	router.GET("/admin/databases", notImplemented)
 	router.GET("/admin/databases/new", notImplemented)
@@ -40,9 +33,7 @@ func RegisterRoutes(r gin.IRouter, db *sql.DB) {
 	router.POST("/admin/databases/:dbID/deactivate", notImplemented)
 	router.POST("/admin/databases/:dbID/activate", notImplemented)
 
-	router.GET("/admin/groups/:groupID/database-access", notImplemented)
-	router.POST("/admin/groups/:groupID/database-access", notImplemented)
-	router.POST("/admin/groups/:groupID/database-access/:dbID/revoke", notImplemented)
+	registerDatabaseAccessRoutes(router, db)
 }
 
 func notImplemented(c *gin.Context) {

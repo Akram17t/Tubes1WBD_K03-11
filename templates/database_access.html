@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Akses database group</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <main>
+        <h1>Akses database: {{.Group.Name}}</h1>
+        <p><a href="/admin/groups/{{.Group.ID}}/edit">Kembali ke group</a></p>
+        {{if .Error}}<p role="alert">{{.Error}}</p>{{end}}
+
+        <h2>Pemberian akses</h2>
+        {{if .Grants}}
+        <table>
+            <thead><tr><th scope="col">Database</th><th scope="col">Status</th><th scope="col">Akses</th><th scope="col">Aksi</th></tr></thead>
+            <tbody>
+                {{range .Grants}}
+                <tr>
+                    <td>{{.DatabaseName}}</td>
+                    <td>{{if .IsActive}}Aktif{{else}}Nonaktif{{end}}</td>
+                    <td>{{.AccessLevel}}</td>
+                    <td>
+                        {{if .IsActive}}
+                        <form method="post" action="/admin/groups/{{$.Group.ID}}/database-access">
+                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                            <input type="hidden" name="database_id" value="{{.DatabaseID}}">
+                            <label for="access-{{.DatabaseID}}">Ubah akses</label>
+                            <select id="access-{{.DatabaseID}}" name="access_level" required>
+                                <option value="view"{{if eq .AccessLevel "view"}} selected{{end}}>view</option>
+                                <option value="edit"{{if eq .AccessLevel "edit"}} selected{{end}}>edit</option>
+                            </select>
+                            <button type="submit">Simpan akses</button>
+                        </form>
+                        {{end}}
+                        <form method="post" action="/admin/groups/{{$.Group.ID}}/database-access/{{.DatabaseID}}/revoke">
+                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                            <button type="submit">Cabut akses</button>
+                        </form>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p>Group ini belum memiliki akses database.</p>
+        {{end}}
+
+        <h2>Atur akses database</h2>
+        {{if .Databases}}
+        <form method="post" action="/admin/groups/{{.Group.ID}}/database-access">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <p>
+                <label for="database_id">Database aktif</label>
+                <select id="database_id" name="database_id" required>
+                    <option value="">Pilih database</option>
+                    {{range .Databases}}
+                    <option value="{{.ID}}"{{if eq .ID $.SelectedDatabaseID}} selected{{end}}>{{.Name}}</option>
+                    {{end}}
+                </select>
+            </p>
+            <p>
+                <label for="access_level">Akses</label>
+                <select id="access_level" name="access_level" required>
+                    <option value="view"{{if eq .SelectedLevel "view"}} selected{{end}}>view</option>
+                    <option value="edit"{{if eq .SelectedLevel "edit"}} selected{{end}}>edit</option>
+                </select>
+            </p>
+            <p>edit mencakup seluruh kemampuan view. Pilih database yang sudah tercantum untuk mengubah aksesnya.</p>
+            <button type="submit">Simpan akses</button>
+        </form>
+        {{else}}
+        <p>Belum ada database aktif yang dapat diberikan akses.</p>
+        {{end}}
+    </main>
+</body>
+</html>

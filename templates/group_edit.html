@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Edit group</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <main>
+        <h1>Edit group: {{.Group.Name}}</h1>
+        <p><a href="/admin/groups">Kembali ke daftar group</a></p>
+        <p><a href="/admin/groups/{{.Group.ID}}/database-access">Kelola akses database group</a></p>
+        {{if .Error}}<p role="alert">{{.Error}}</p>{{end}}
+        <form method="post" action="/admin/groups/{{.Group.ID}}/update">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <p>
+                <label for="name">Nama group</label>
+                <input id="name" name="name" type="text" maxlength="100" required value="{{.Group.Name}}">
+            </p>
+            <p>
+                <label for="description">Deskripsi (opsional)</label>
+                <textarea id="description" name="description" rows="4">{{.Group.Description}}</textarea>
+            </p>
+            <button type="submit">Simpan perubahan</button>
+        </form>
+
+        <h2>Anggota group</h2>
+        {{if .Members}}
+        <table>
+            <thead><tr><th scope="col">Username</th><th scope="col">Nama</th><th scope="col">Status akun</th><th scope="col">Aksi</th></tr></thead>
+            <tbody>
+                {{range .Members}}
+                <tr>
+                    <td>{{.Username}}</td>
+                    <td>{{.DisplayName}}</td>
+                    <td>{{if .IsActive}}Aktif{{else}}Nonaktif{{end}}</td>
+                    <td>
+                        <form method="post" action="/admin/groups/{{$.Group.ID}}/members/{{.ID}}/remove">
+                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                            <button type="submit">Keluarkan anggota</button>
+                        </form>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p>Belum ada anggota.</p>
+        {{end}}
+
+        <h2>Tambah anggota</h2>
+        {{if .AvailableUsers}}
+        <form method="post" action="/admin/groups/{{.Group.ID}}/members">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <label for="user_id">User</label>
+            <select id="user_id" name="user_id" required>
+                <option value="">Pilih user</option>
+                {{range .AvailableUsers}}
+                <option value="{{.ID}}">{{.Username}} — {{.DisplayName}}{{if not .IsActive}} (nonaktif){{end}}</option>
+                {{end}}
+            </select>
+            <button type="submit">Tambah anggota</button>
+        </form>
+        {{else}}
+        <p>Tidak ada user lain yang dapat ditambahkan.</p>
+        {{end}}
+
+        <h2>Hapus group</h2>
+        <p>Penghapusan juga menghapus keanggotaan dan akses database milik group. Seluruh session anggota akan dicabut.</p>
+        <form method="post" action="/admin/groups/{{.Group.ID}}/delete">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <button type="submit">Hapus group</button>
+        </form>
+    </main>
+</body>
+</html>

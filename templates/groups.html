@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Daftar group</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <main>
+        <h1>Daftar group</h1>
+        <p><a href="/admin/groups/new">Buat group</a></p>
+        {{if .Groups}}
+        <table>
+            <thead><tr><th scope="col">Nama</th><th scope="col">Deskripsi</th><th scope="col">Aksi</th></tr></thead>
+            <tbody>
+                {{range .Groups}}
+                <tr>
+                    <td>{{.Name}}</td>
+                    <td>{{if .Description}}{{.Description}}{{else}}—{{end}}</td>
+                    <td>
+                        <a href="/admin/groups/{{.ID}}/edit">Edit dan kelola anggota</a>
+                        <a href="/admin/groups/{{.ID}}/database-access">Akses database</a>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p>Belum ada group.</p>
+        {{end}}
+    </main>
+</body>
+</html>

@@ -75,6 +75,36 @@ func EffectiveLevel(ctx context.Context, db queryer, userID, dbID int64) (Level,
 	return Level(level.Int64), nil
 }
 
+// AccessibleDatabaseIDs mengambil ID database aktif yang bisa diakses user melalui group
+func AccessibleDatabaseIDs(ctx context.Context, db *sql.DB, user *User) ([]int64, error) {
+	if user == nil {
+		return nil, ErrForbidden
+	}
+	rows, err := db.QueryContext(ctx, `
+		SELECT dc.id FROM database_connections dc
+		WHERE dc.is_active AND EXISTS (
+			SELECT 1 FROM user_groups ug
+			JOIN group_database_access gda ON gda.group_id = ug.group_id
+			WHERE ug.user_id = $1 AND gda.database_id = dc.id
+			  AND gda.access_level IN ('view', 'edit')
+		)
+		ORDER BY dc.id
+	`, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // pintu utama cek izin, balikin ErrForbidden kalau ditolak.
 // dbID diabaikan untuk ManagePlatform.
 func Authorize(ctx context.Context, db queryer, user *User, action Action, dbID int64) error {
