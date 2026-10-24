@@ -18,7 +18,10 @@
                 <tr>
                     <td>{{.Name}}</td>
                     <td>{{if .Description}}{{.Description}}{{else}}—{{end}}</td>
-                    <td><a href="/admin/groups/{{.ID}}/edit">Edit dan kelola anggota</a></td>
+                    <td>
+                        <a href="/admin/groups/{{.ID}}/edit">Edit dan kelola anggota</a>
+                        <a href="/admin/groups/{{.ID}}/database-access">Akses database</a>
+                    </td>
                 </tr>
                 {{end}}
             </tbody>
