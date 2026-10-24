@@ -28,9 +28,7 @@ func newAuthRouter(db *sql.DB) *gin.Engine {
 	r := gin.New()
 	r.LoadHTMLFiles("../../templates/login.html")
 
-	h := &Handler{DB: db, Config: testSessionConfig}
-	r.Use(h.Session(), CSRF())
-	h.RegisterRoutes(r)
+	RegisterRoutes(r, db, testSessionConfig)
 	r.GET("/databases", RequireLogin(), func(c *gin.Context) {
 		c.String(http.StatusOK, "daftar database")
 	})

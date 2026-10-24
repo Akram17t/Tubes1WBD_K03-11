@@ -16,6 +16,8 @@ type Config struct {
 	SessionAbsoluteTimeout  time.Duration
 	SessionRotationInterval time.Duration
 	SessionGracePeriod      time.Duration
+	AdminUsername           string
+	AdminPassword           string
 }
 
 // LoadConfig reads .env defaults, then validates application settings.
@@ -52,6 +54,10 @@ func LoadConfig() (Config, error) {
 	if config.SessionGracePeriod, err = durationFromEnv("SESSION_GRACE_PERIOD", 30*time.Second); err != nil {
 		return Config{}, err
 	}
+
+	// dipakai buat bikin Platform Admin pertama, password ga di-trim
+	config.AdminUsername = envOrDefault("ADMIN_USERNAME", "")
+	config.AdminPassword = os.Getenv("ADMIN_PASSWORD")
 
 	if config.SessionIdleTimeout > config.SessionAbsoluteTimeout {
 		return Config{}, fmt.Errorf("SESSION_IDLE_TIMEOUT must not exceed SESSION_ABSOLUTE_TIMEOUT")

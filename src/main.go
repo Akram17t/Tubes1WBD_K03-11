@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"tubes-wbd/src/auth"
 	"tubes-wbd/src/platformdb"
 )
 
@@ -33,6 +34,10 @@ func run(ctx context.Context) error {
 		return err
 	}
 	defer platformDB.Close()
+
+	if err := auth.EnsureAdmin(ctx, platformDB, config.AdminUsername, config.AdminPassword); err != nil {
+		return fmt.Errorf("seed platform admin: %w", err)
+	}
 
 	router, err := newRouter(Dependencies{Config: config, PlatformDB: platformDB})
 	if err != nil {

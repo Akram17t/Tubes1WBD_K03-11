@@ -117,23 +117,6 @@ func EnsureAdmin(ctx context.Context, db *sql.DB, username, password string) err
 	return err
 }
 
-// daftarin route login dan logout, middleware Session harus sudah dipasang di router
-func (h *Handler) RegisterRoutes(r gin.IRouter) {
-	r.GET("/", h.home)
-	r.GET("/login", h.showLogin)
-	r.POST("/login", h.login)
-	r.POST("/logout", RequireLogin(), h.logout)
-}
-
-// arahin ke daftar database kalau sudah login, kalau belum ke halaman login
-func (h *Handler) home(c *gin.Context) {
-	if _, ok := CurrentUser(c); ok {
-		c.Redirect(http.StatusSeeOther, "/databases")
-		return
-	}
-	c.Redirect(http.StatusSeeOther, "/login")
-}
-
 // tampilin form login
 func (h *Handler) showLogin(c *gin.Context) {
 	if _, ok := CurrentUser(c); ok {

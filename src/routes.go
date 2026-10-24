@@ -61,7 +61,13 @@ func newRouter(deps Dependencies) (*gin.Engine, error) {
 	router.SetHTMLTemplate(pageTemplates)
 	router.Static("/static", staticDir)
 
-	auth.RegisterRoutes(router, deps.PlatformDB)
+	auth.RegisterRoutes(router, deps.PlatformDB, auth.SessionConfig{
+		IdleTimeout:      deps.Config.SessionIdleTimeout,
+		AbsoluteTimeout:  deps.Config.SessionAbsoluteTimeout,
+		RotationInterval: deps.Config.SessionRotationInterval,
+		GracePeriod:      deps.Config.SessionGracePeriod,
+		SecureCookie:     deps.Config.AppEnv == "production",
+	})
 	database.RegisterRoutes(router, deps.PlatformDB)
 	migration.RegisterRoutes(router, deps.PlatformDB)
 	admin.RegisterRoutes(router, deps.PlatformDB)
