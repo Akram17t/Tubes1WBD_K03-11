@@ -20,6 +20,20 @@
           <div class="col-12">
             <div class="card shadow-2-strong" style="border-radius: 1rem">
               <main class="card-body p-4 p-md-5">
+                <nav class="d-flex flex-wrap align-items-center gap-3 mb-4" aria-label="Navigasi utama">
+                  <a href="/databases">Daftar database</a>
+                  {{with .User}}
+                  {{if .IsPlatformAdmin}}
+                  <a href="/admin/users">User</a>
+                  <a href="/admin/groups">Group</a>
+                  {{end}}
+                  <span class="ms-auto">{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Username}}{{end}}</span>
+                  <form method="post" action="/logout">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                    <button class="btn btn-light btn-sm" type="submit">Logout</button>
+                  </form>
+                  {{end}}
+                </nav>
                 <nav class="d-flex flex-wrap gap-3 mb-4" aria-label="Navigasi database">
                   <a href="/databases/{{.Database.ID}}">{{.Database.Name}}</a>
                   <a href="/databases/{{.Database.ID}}/schema">Schema</a>

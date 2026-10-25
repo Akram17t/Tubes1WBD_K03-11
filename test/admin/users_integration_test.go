@@ -1,4 +1,4 @@
-package admin
+package admin_test
 
 import (
 	"bytes"
@@ -6,16 +6,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"regexp"
 	"strconv"
 	"testing"
 	"time"
+	testdb "tubes-wbd/test/database"
 
+	"tubes-wbd/src/admin"
 	"tubes-wbd/src/auth"
 
 	"github.com/gin-gonic/gin"
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -24,20 +24,7 @@ var csrfPattern = regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
 // buka test-db dan kosongin tabel, skip kalau TEST_DATABASE_URL ga diisi
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("TEST_DATABASE_URL kosong, integration test dilewati")
-	}
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
-
-	if _, err := db.Exec(`TRUNCATE users, groups, database_connections RESTART IDENTITY CASCADE`); err != nil {
-		t.Fatal(err)
-	}
-	return db
+	return testdb.Open(t)
 }
 
 // router lengkap kayak di aplikasi: auth dulu, baru route admin
@@ -51,7 +38,7 @@ func newAdminRouter(db *sql.DB) *gin.Engine {
 		RotationInterval: 15 * time.Minute,
 		GracePeriod:      30 * time.Second,
 	})
-	RegisterRoutes(r, db)
+	admin.RegisterRoutes(r, db)
 	return r
 }
 

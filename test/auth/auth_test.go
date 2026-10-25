@@ -1,9 +1,10 @@
-package auth
+package auth_test
 
 import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	. "tubes-wbd/src/auth"
 
 	"github.com/gin-gonic/gin"
 )
@@ -14,7 +15,7 @@ func newTestRouter(user *User, middlewares ...gin.HandlerFunc) *gin.Engine {
 	r := gin.New()
 	r.Use(func(c *gin.Context) {
 		if user != nil {
-			setCurrentUser(c, user)
+			c.Set("auth.user", user)
 		}
 		c.Next()
 	})

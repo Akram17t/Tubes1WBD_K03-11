@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"tubes-wbd/src/auth"
+	"tubes-wbd/src/migration"
 	"tubes-wbd/src/platformdb"
 )
 
@@ -39,7 +40,13 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("seed platform admin: %w", err)
 	}
 
-	router, err := newRouter(Dependencies{Config: config, PlatformDB: platformDB})
+	deps := Dependencies{Config: config, PlatformDB: platformDB}
+	recoveryCtx, cancelRecovery := context.WithTimeout(ctx, 10*time.Second)
+	if err := migration.RecoverRunning(recoveryCtx, platformDB, deps.TargetDB); err != nil {
+		log.Print("Pemulihan migration belum selesai; status akan diperiksa sebelum eksekusi berikutnya")
+	}
+	cancelRecovery()
+	router, err := newRouter(deps)
 	if err != nil {
 		return fmt.Errorf("build router: %w", err)
 	}

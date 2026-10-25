@@ -1,8 +1,9 @@
-package auth
+package auth_test
 
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	. "tubes-wbd/src/auth"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -90,7 +92,7 @@ func send(r *gin.Engine, method, path string, form url.Values, sessionCookie *ht
 // ambil cookie session dari response, nil kalau ga ada
 func sessionCookieFrom(w *httptest.ResponseRecorder) *http.Cookie {
 	for _, cookie := range w.Result().Cookies() {
-		if cookie.Name == sessionCookieName {
+		if cookie.Name == "session" {
 			return cookie
 		}
 	}
@@ -126,7 +128,8 @@ func TestLoginAndLogout(t *testing.T) {
 
 	var storedHash []byte
 	db.QueryRow(`SELECT token_hash FROM session_tokens`).Scan(&storedHash)
-	if !bytes.Equal(storedHash, hashToken(cookie.Value)) || bytes.Equal(storedHash, []byte(cookie.Value)) {
+	expectedHash := sha256.Sum256([]byte(cookie.Value))
+	if !bytes.Equal(storedHash, expectedHash[:]) || bytes.Equal(storedHash, []byte(cookie.Value)) {
 		t.Error("database harus nyimpen hash token, bukan token aslinya")
 	}
 
@@ -170,7 +173,7 @@ func TestLoginFailuresUseGenericMessage(t *testing.T) {
 		if w.Code != http.StatusUnauthorized {
 			t.Errorf("%s: dapat %d, harusnya 401", form.Get("username"), w.Code)
 		}
-		if !strings.Contains(w.Body.String(), errInvalidLogin.Error()) {
+		if !strings.Contains(w.Body.String(), "username atau password salah") {
 			t.Errorf("%s: pesan error generik ga muncul", form.Get("username"))
 		}
 		if strings.Contains(w.Body.String(), form.Get("password")) {

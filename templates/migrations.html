@@ -20,6 +20,20 @@
           <div class="col-12 col-xl-10">
             <div class="card shadow-2-strong" style="border-radius: 1rem">
               <main class="card-body p-4 p-md-5">
+                <nav class="d-flex flex-wrap align-items-center gap-3 mb-4" aria-label="Navigasi utama">
+                  <a href="/databases">Daftar database</a>
+                  {{with .User}}
+                  {{if .IsPlatformAdmin}}
+                  <a href="/admin/users">User</a>
+                  <a href="/admin/groups">Group</a>
+                  {{end}}
+                  <span class="ms-auto">{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Username}}{{end}}</span>
+                  <form method="post" action="/logout">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                    <button class="btn btn-light btn-sm" type="submit">Logout</button>
+                  </form>
+                  {{end}}
+                </nav>
                 <nav class="d-flex flex-wrap gap-3 mb-4" aria-label="Navigasi migration">
                   <a href="/databases/{{.DatabaseID}}">Database #{{.DatabaseID}}</a>
                   <a href="/databases/{{.DatabaseID}}/migrations">Daftar migration</a>
@@ -123,6 +137,13 @@
                 <a class="btn btn-primary mb-4" href="/databases/{{$.DatabaseID}}/migrations/{{.ID}}/edit">
                   Edit migration
                 </a>
+                <form class="mb-4" method="post" action="/databases/{{$.DatabaseID}}/migrations/{{.ID}}/execute">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+                  <button class="btn btn-primary" type="submit">Jalankan migration</button>
+                </form>
+                {{end}}
+                {{if eq .Status "running"}}
+                <p class="alert alert-info" role="status">Hasil eksekusi belum tersedia. Muat ulang halaman untuk memeriksa status.</p>
                 {{end}}
                 <dl class="row mb-4">
                   <dt class="col-sm-3">Status</dt><dd class="col-sm-9">{{.Status}}</dd>
