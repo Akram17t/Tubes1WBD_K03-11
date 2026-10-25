@@ -123,7 +123,7 @@ func TestViewerRoutesPermissionsAndEscapedIdentifiers(t *testing.T) {
 	if w.Code != 200 || strings.Contains(w.Body.String(), "<script>alert") || !strings.Contains(w.Body.String(), "&lt;script&gt;") {
 		t.Fatalf("nama tabel ter-escape: %d %s", w.Code, w.Body.String())
 	}
-	testdb.Exec(t, f.Target, `CREATE SCHEMA empty_schema`)
+	testdb.Exec(t, f.Target, `DROP SCHEMA IF EXISTS empty_schema; CREATE SCHEMA empty_schema`)
 	w = testdb.Request(r, "GET", "/databases/1/schema?schema=empty_schema", nil, viewer)
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "Tidak ada tabel") {
 		t.Fatal("schema kosong tidak ditangani")
