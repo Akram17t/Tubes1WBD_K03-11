@@ -1,22 +1,11 @@
 <!doctype html>
 <html lang="id">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Users | DB Platform</title>
-    <link rel="stylesheet" href="/static/login/bootstrap-login-form.min.css" />
+    {{template "head"}}
   </head>
   <body class="bg-light">
-    <nav class="navbar navbar-light bg-white shadow-sm mb-4">
-      <div class="container">
-        <span class="navbar-brand">DB Platform</span>
-        <form method="post" action="/logout" class="d-flex align-items-center">
-          <span class="me-3">{{.User.DisplayName}}</span>
-          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
-          <button type="submit" class="btn btn-outline-dark btn-sm">Logout</button>
-        </form>
-      </div>
-    </nav>
+    {{template "nav" .}}
 
     <main class="container">
       <div class="d-flex justify-content-between align-items-center mb-3">

@@ -92,7 +92,7 @@ func (h databaseAccessHandler) render(c *gin.Context, groupID int64, status int,
 	c.HTML(status, "database_access.html", gin.H{
 		"Group": page.Group, "Grants": page.Grants, "Databases": page.Databases,
 		"SelectedDatabaseID": selectedID, "SelectedLevel": selectedLevel,
-		"Error": message, "CSRFToken": auth.CSRFToken(c),
+		"Error": message, "CSRFToken": auth.CSRFToken(c), "User": user,
 	})
 }
 

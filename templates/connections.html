@@ -1,8 +1,9 @@
 <!doctype html>
 <html lang="id">
-<head><meta charset="utf-8"><title>Koneksi database</title><link rel="stylesheet" href="/static/style.css"></head>
-<body>
-<main>
+<head><title>Koneksi database</title>{{template "head"}}</head>
+<body class="bg-light">
+{{template "nav" .}}
+<main class="container page">
   <h1>Koneksi database</h1>
   <nav><a href="/admin/databases/new">Tambah koneksi</a> · <a href="/admin/groups">Group</a> · <a href="/databases">Database viewer</a></nav>
   <table>

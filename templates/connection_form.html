@@ -1,8 +1,9 @@
 <!doctype html>
 <html lang="id">
-<head><meta charset="utf-8"><title>{{if .Connection.ID}}Edit{{else}}Tambah{{end}} koneksi</title><link rel="stylesheet" href="/static/style.css"></head>
-<body>
-<main>
+<head><title>{{if .Connection.ID}}Edit{{else}}Tambah{{end}} koneksi</title>{{template "head"}}</head>
+<body class="bg-light">
+{{template "nav" .}}
+<main class="container page">
   <h1>{{if .Connection.ID}}Edit{{else}}Tambah{{end}} koneksi database</h1>
   <a href="/admin/databases">Kembali ke daftar koneksi</a>
   {{if .Error}}<p role="alert">{{.Error}}</p>{{end}}

@@ -1,1 +1,31 @@
+{{/* potongan bersama: head buat CSS, nav buat navbar + logout.
+     nav butuh data .User dan .CSRFToken dari handler */}}
+{{define "head"}}
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="/static/login/bootstrap-login-form.min.css" />
+<link rel="stylesheet" href="/static/style.css" />
+{{end}}
 
+{{define "nav"}}
+<nav class="navbar navbar-light bg-white shadow-sm mb-4">
+  <div class="container">
+    <a href="/databases" class="navbar-brand">DB Platform</a>
+    {{with .User}}
+    <div class="d-flex flex-wrap align-items-center gap-3">
+      <a href="/databases">Database</a>
+      {{if .IsPlatformAdmin}}
+      <a href="/admin/users">User</a>
+      <a href="/admin/groups">Group</a>
+      <a href="/admin/databases">Koneksi</a>
+      {{end}}
+      <span class="text-muted">{{.DisplayName}}</span>
+      <form method="post" action="/logout" class="m-0">
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
+        <button type="submit" class="btn btn-outline-dark btn-sm">Logout</button>
+      </form>
+    </div>
+    {{end}}
+  </div>
+</nav>
+{{end}}

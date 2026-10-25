@@ -74,7 +74,7 @@ func (h groupHandler) list(c *gin.Context) {
 		c.String(status, "%s", message)
 		return
 	}
-	c.HTML(http.StatusOK, "groups.html", gin.H{"Groups": groups})
+	c.HTML(http.StatusOK, "groups.html", gin.H{"Groups": groups, "User": user, "CSRFToken": auth.CSRFToken(c)})
 }
 
 func (h groupHandler) new(c *gin.Context) {
@@ -194,7 +194,7 @@ func (h groupHandler) editForm(c *gin.Context, id int64, status int, message str
 	}
 	c.HTML(status, "group_edit.html", gin.H{
 		"Group": data.Group, "Members": data.Members, "AvailableUsers": data.AvailableUsers,
-		"Error": message, "CSRFToken": auth.CSRFToken(c),
+		"Error": message, "CSRFToken": auth.CSRFToken(c), "User": user,
 	})
 }
 
@@ -212,8 +212,9 @@ func groupEditURL(id int64) string {
 }
 
 func (h groupHandler) form(c *gin.Context, status int, group Group, message string) {
+	user, _ := auth.CurrentUser(c)
 	c.HTML(status, "group_new.html", gin.H{
-		"Group": group, "Error": message, "CSRFToken": auth.CSRFToken(c),
+		"Group": group, "Error": message, "CSRFToken": auth.CSRFToken(c), "User": user,
 	})
 }
 

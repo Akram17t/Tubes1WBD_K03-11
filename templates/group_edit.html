@@ -1,13 +1,12 @@
 <!doctype html>
 <html lang="id">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Edit group</title>
-    <link rel="stylesheet" href="/static/style.css">
+    {{template "head"}}
 </head>
-<body>
-    <main>
+<body class="bg-light">
+{{template "nav" .}}
+    <main class="container page">
         <h1>Edit group: {{.Group.Name}}</h1>
         <p><a href="/admin/groups">Kembali ke daftar group</a></p>
         <p><a href="/admin/groups/{{.Group.ID}}/database-access">Kelola akses database group</a></p>

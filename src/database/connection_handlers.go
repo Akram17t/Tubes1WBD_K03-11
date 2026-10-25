@@ -33,7 +33,7 @@ func (h connectionHandler) list(c *gin.Context) {
 		connectionError(c, err)
 		return
 	}
-	c.HTML(http.StatusOK, "connections.html", gin.H{"Connections": connections, "CSRFToken": auth.CSRFToken(c)})
+	c.HTML(http.StatusOK, "connections.html", gin.H{"Connections": connections, "CSRFToken": auth.CSRFToken(c), "User": user})
 }
 
 func (h connectionHandler) newForm(c *gin.Context) {
@@ -142,7 +142,8 @@ func safeFormConnection(id int64, input ConnectionInput) Connection {
 }
 
 func renderConnectionForm(c *gin.Context, status int, connection Connection, message string) {
-	c.HTML(status, "connection_form.html", gin.H{"Connection": connection, "Error": message, "TestOK": c.Query("test") == "ok", "CSRFToken": auth.CSRFToken(c), "SSLModes": []string{"disable", "allow", "prefer", "require", "verify-ca", "verify-full"}})
+	user, _ := auth.CurrentUser(c)
+	c.HTML(status, "connection_form.html", gin.H{"User": user, "Connection": connection, "Error": message, "TestOK": c.Query("test") == "ok", "CSRFToken": auth.CSRFToken(c), "SSLModes": []string{"disable", "allow", "prefer", "require", "verify-ca", "verify-full"}})
 }
 
 func connectionStatus(err error) int {
