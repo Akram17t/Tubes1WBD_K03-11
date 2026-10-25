@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="id">
+<head><meta charset="utf-8"><title>Koneksi database</title><link rel="stylesheet" href="/static/style.css"></head>
+<body>
+<main>
+  <h1>Koneksi database</h1>
+  <nav><a href="/admin/databases/new">Tambah koneksi</a> · <a href="/admin/groups">Group</a> · <a href="/databases">Database viewer</a></nav>
+  <table>
+    <thead><tr><th>Nama</th><th>Host</th><th>Database</th><th>Status</th><th>Tindakan</th></tr></thead>
+    <tbody>
+    {{range .Connections}}
+    <tr>
+      <td>{{.Name}}</td><td>{{.Host}}:{{.Port}}</td><td>{{.DatabaseName}}</td><td>{{if .IsActive}}Aktif{{else}}Nonaktif{{end}}</td>
+      <td>
+        <a href="/admin/databases/{{.ID}}/edit">Edit</a>
+        <form method="post" action="/admin/databases/{{.ID}}/{{if .IsActive}}deactivate{{else}}activate{{end}}">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+          <button type="submit">{{if .IsActive}}Nonaktifkan{{else}}Aktifkan{{end}}</button>
+        </form>
+      </td>
+    </tr>
+    {{else}}<tr><td colspan="5">Belum ada koneksi database.</td></tr>{{end}}
+    </tbody>
+  </table>
+</main>
+</body>
+</html>
