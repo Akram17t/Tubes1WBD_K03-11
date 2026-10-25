@@ -14,7 +14,6 @@ import (
 	. "tubes-wbd/src/auth"
 
 	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
 )
 
 var testSessionConfig = SessionConfig{
@@ -257,7 +256,7 @@ func TestEnsureAdmin(t *testing.T) {
 	if count != 1 || username != "admin" {
 		t.Errorf("harusnya 1 admin bernama admin, dapat %d user, username %q", count, username)
 	}
-	if bcrypt.CompareHashAndPassword([]byte(hash), []byte("rahasia123")) != nil {
-		t.Error("password admin harus disimpan sebagai hash bcrypt")
+	if !strings.HasPrefix(hash, "$argon2id$") || !CheckPassword(hash, "rahasia123") {
+		t.Error("password admin harus disimpan sebagai hash Argon2id")
 	}
 }

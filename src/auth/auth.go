@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // User adalah user login yang dititipkan middleware session ke context Gin
@@ -29,9 +28,6 @@ type Handler struct {
 const userKey = "auth.user"
 
 var errInvalidLogin = errors.New("username atau password salah")
-
-// hash palsu buat dibandingin kalau username ga ketemu, biar waktu responnya sama
-var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-password"), bcrypt.DefaultCost)
 
 // buat nitipin user login ke context, dipanggil middleware session
 func setCurrentUser(c *gin.Context, user *User) {
@@ -74,15 +70,6 @@ func RequireAdmin() gin.HandlerFunc {
 		}
 		c.Next()
 	}
-}
-
-// ubah password jadi hash bcrypt, dipakai juga waktu admin bikin atau ganti password user
-func HashPassword(password string) (string, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return "", err
-	}
-	return string(hash), nil
 }
 
 // rapihin username biar "Admin " dan "admin" dianggap sama
@@ -173,14 +160,14 @@ func (h *Handler) checkCredentials(ctx context.Context, username, password strin
 	`, username).Scan(&userID, &passwordHash, &isActive, &privilegeVersion)
 
 	if errors.Is(err, sql.ErrNoRows) {
-		bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
+		CheckPassword(dummyHash, password)
 		return 0, 0, errInvalidLogin
 	}
 	if err != nil {
 		return 0, 0, err
 	}
 
-	if bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)) != nil {
+	if !CheckPassword(passwordHash, password) {
 		return 0, 0, errInvalidLogin
 	}
 	if !isActive {

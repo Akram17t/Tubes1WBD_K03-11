@@ -16,7 +16,7 @@ import (
 
 const (
 	minPasswordLength = 8
-	maxPasswordLength = 72 // batas bcrypt
+	maxPasswordLength = 72 // batas wajar biar hashing ga dipakai buat bikin server berat
 )
 
 // userHandler nampung route administrasi user
