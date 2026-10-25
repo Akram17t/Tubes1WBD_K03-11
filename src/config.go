@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ type Config struct {
 	AppAddr                 string
 	AppEnv                  string
 	PlatformDatabaseURL     string
+	ConnectionEncryptionKey []byte
 	SessionIdleTimeout      time.Duration
 	SessionAbsoluteTimeout  time.Duration
 	SessionRotationInterval time.Duration
@@ -40,6 +42,10 @@ func LoadConfig() (Config, error) {
 	config.PlatformDatabaseURL = strings.TrimSpace(os.Getenv("PLATFORM_DATABASE_URL"))
 	if config.PlatformDatabaseURL == "" {
 		return Config{}, fmt.Errorf("PLATFORM_DATABASE_URL must not be empty")
+	}
+	config.ConnectionEncryptionKey, err = base64.StdEncoding.DecodeString(strings.TrimSpace(os.Getenv("CONNECTION_ENCRYPTION_KEY")))
+	if err != nil || len(config.ConnectionEncryptionKey) != 32 {
+		return Config{}, fmt.Errorf("CONNECTION_ENCRYPTION_KEY must be base64 encoding of 32 bytes")
 	}
 
 	if config.SessionIdleTimeout, err = durationFromEnv("SESSION_IDLE_TIMEOUT", 30*time.Minute); err != nil {

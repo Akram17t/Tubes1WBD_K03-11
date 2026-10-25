@@ -24,15 +24,6 @@ func RegisterRoutes(r gin.IRouter, db *sql.DB) {
 
 	registerGroupRoutes(router, groupService{db: db, store: groupRepository{db: db}})
 
-	router.GET("/admin/databases", notImplemented)
-	router.GET("/admin/databases/new", notImplemented)
-	router.POST("/admin/databases", notImplemented)
-	router.GET("/admin/databases/:dbID/edit", notImplemented)
-	router.POST("/admin/databases/:dbID/update", notImplemented)
-	router.POST("/admin/databases/:dbID/test", notImplemented)
-	router.POST("/admin/databases/:dbID/deactivate", notImplemented)
-	router.POST("/admin/databases/:dbID/activate", notImplemented)
-
 	registerDatabaseAccessRoutes(router, db)
 }
 

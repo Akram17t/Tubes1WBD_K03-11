@@ -21,14 +21,18 @@ import (
 )
 
 type Dependencies struct {
-	Config     Config
-	PlatformDB *sql.DB
-	TargetDB   database.TargetProvider
+	Config            Config
+	PlatformDB        *sql.DB
+	TargetDB          database.TargetProvider
+	TargetConnections *database.ConnectionService
 }
 
 func newRouter(deps Dependencies) (*gin.Engine, error) {
 	if deps.PlatformDB == nil {
 		return nil, errors.New("platform database is required")
+	}
+	if deps.TargetConnections == nil {
+		return nil, errors.New("target connection service is required")
 	}
 
 	pageTemplates, err := template.New("").ParseGlob(filepath.Join("templates", "*.html"))
@@ -71,6 +75,7 @@ func newRouter(deps Dependencies) (*gin.Engine, error) {
 		SecureCookie:     deps.Config.AppEnv == "production",
 	})
 	database.RegisterRoutes(router, deps.PlatformDB, deps.TargetDB)
+	database.RegisterAdminRoutes(router, deps.TargetConnections)
 	migration.RegisterRoutes(router, deps.PlatformDB, deps.TargetDB)
 	admin.RegisterRoutes(router, deps.PlatformDB)
 	return router, nil

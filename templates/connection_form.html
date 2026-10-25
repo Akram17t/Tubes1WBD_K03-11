@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="id">
+<head><meta charset="utf-8"><title>{{if .Connection.ID}}Edit{{else}}Tambah{{end}} koneksi</title><link rel="stylesheet" href="/static/style.css"></head>
+<body>
+<main>
+  <h1>{{if .Connection.ID}}Edit{{else}}Tambah{{end}} koneksi database</h1>
+  <a href="/admin/databases">Kembali ke daftar koneksi</a>
+  {{if .Error}}<p role="alert">{{.Error}}</p>{{end}}
+  {{if .TestOK}}<p role="status">Uji koneksi berhasil.</p>{{end}}
+  <form method="post" action="/admin/databases{{if .Connection.ID}}/{{.Connection.ID}}/update{{end}}">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <p><label>Nama <input name="name" value="{{.Connection.Name}}" maxlength="100" required></label></p>
+    <p><label>Host <input name="host" value="{{.Connection.Host}}" required></label></p>
+    <p><label>Port <input type="number" name="port" value="{{.Connection.Port}}" min="1" max="65535" required></label></p>
+    <p><label>Nama database <input name="database_name" value="{{.Connection.DatabaseName}}" required></label></p>
+    <p><label>Username database <input name="db_username" value="{{.Connection.DBUsername}}" autocomplete="off" required></label></p>
+    <p><label>Password <input type="password" name="password" autocomplete="new-password" {{if not .Connection.ID}}required{{end}}></label>
+      {{if .Connection.ID}}<small>Kosongkan untuk mempertahankan password lama.</small>{{end}}</p>
+    <p><label>SSL mode <select name="ssl_mode">{{range .SSLModes}}<option value="{{.}}" {{if eq . $.Connection.SSLMode}}selected{{end}}>{{.}}</option>{{end}}</select></label></p>
+    <button type="submit">Simpan</button>
+  </form>
+  {{if .Connection.ID}}
+  <p>Status: {{if .Connection.IsActive}}Aktif{{else}}Nonaktif{{end}}</p>
+  {{if .Connection.IsActive}}
+  <form method="post" action="/admin/databases/{{.Connection.ID}}/test">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button type="submit">Uji koneksi tersimpan</button>
+  </form>
+  {{end}}
+  <form method="post" action="/admin/databases/{{.Connection.ID}}/{{if .Connection.IsActive}}deactivate{{else}}activate{{end}}">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button type="submit">{{if .Connection.IsActive}}Nonaktifkan{{else}}Aktifkan{{end}}</button>
+  </form>
+  {{end}}
+</main>
+</body>
+</html>
