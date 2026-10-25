@@ -1,4 +1,4 @@
-package auth
+package auth_test
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	. "tubes-wbd/src/auth"
 )
 
 // hitung token current (belum masuk grace) di semua session

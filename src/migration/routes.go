@@ -8,33 +8,65 @@ import (
 	"strconv"
 
 	"tubes-wbd/src/auth"
+	"tubes-wbd/src/database"
 
 	"github.com/gin-gonic/gin"
 )
 
-func RegisterRoutes(router gin.IRoutes, db *sql.DB) {
-	h := handlers{db: db}
+func RegisterRoutes(router gin.IRoutes, db *sql.DB, targets database.TargetProvider) {
+	h := handlers{db: db, targets: targets}
 	login := auth.RequireLogin()
-	protection := http.NewCrossOriginProtection()
-	csrf := func(c *gin.Context) {
-		if err := protection.Check(c.Request); err != nil {
-			c.AbortWithStatus(http.StatusForbidden)
-			return
-		}
-		c.Next()
-	}
+	csrf := auth.CSRF()
 	router.GET("/databases/:dbID/migrations", login, h.list)
 	router.GET("/databases/:dbID/migrations/new", login, h.new)
 	router.POST("/databases/:dbID/migrations", login, csrf, h.create)
 	router.GET("/databases/:dbID/migrations/:migrationID", login, h.detail)
 	router.GET("/databases/:dbID/migrations/:migrationID/edit", login, h.edit)
 	router.POST("/databases/:dbID/migrations/:migrationID/update", login, csrf, h.update)
-	router.POST("/databases/:dbID/migrations/:migrationID/execute", login, csrf, notImplemented)
+	router.POST("/databases/:dbID/migrations/:migrationID/execute", login, csrf, h.execute)
 	router.GET("/databases/:dbID/migrations/:migrationID/executions/:executionID", login, h.execution)
 }
 
 type handlers struct {
-	db *sql.DB
+	db      *sql.DB
+	targets database.TargetProvider
+}
+
+func (h handlers) execute(c *gin.Context) {
+	dbID, migrationID, ok := migrationIDs(c)
+	if !ok {
+		return
+	}
+	ctx := c.Request.Context()
+	user, _ := auth.CurrentUser(c)
+	if err := auth.Authorize(ctx, h.db, user, auth.ExecuteMigration, dbID); err != nil {
+		respondError(c, err)
+		return
+	}
+	migration, err := GetMigration(ctx, h.db, user, dbID, migrationID)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	if migration.Status == "success" {
+		respondError(c, ErrConflict)
+		return
+	}
+	target, err := database.TargetConnection(ctx, h.db, h.targets, dbID)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	execution, err := ExecuteMigration(ctx, h.db, target, user, dbID, migrationID)
+	if errors.Is(err, ErrOutcomeUnknown) {
+		c.Redirect(http.StatusSeeOther, fmt.Sprintf("/databases/%d/migrations/%d", dbID, migrationID))
+		return
+	}
+	if err != nil && !errors.Is(err, ErrExecutionFailed) {
+		respondError(c, err)
+		return
+	}
+	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/databases/%d/migrations/%d/executions/%d", dbID, migrationID, execution.ID))
 }
 
 func (h handlers) list(c *gin.Context) {
@@ -53,7 +85,7 @@ func (h handlers) list(c *gin.Context) {
 		respondError(c, editErr)
 		return
 	}
-	c.HTML(http.StatusOK, "migrations.html", gin.H{"Page": "list", "DatabaseID": dbID, "Migrations": migrations, "CanEdit": editErr == nil})
+	render(c, gin.H{"Page": "list", "DatabaseID": dbID, "Migrations": migrations, "CanEdit": editErr == nil})
 }
 
 func (h handlers) new(c *gin.Context) {
@@ -66,7 +98,7 @@ func (h handlers) new(c *gin.Context) {
 		respondError(c, err)
 		return
 	}
-	c.HTML(http.StatusOK, "migrations.html", gin.H{"Page": "new", "DatabaseID": dbID, "CSRFToken": auth.CSRFToken(c)})
+	render(c, gin.H{"Page": "new", "DatabaseID": dbID})
 }
 
 func (h handlers) create(c *gin.Context) {
@@ -109,7 +141,7 @@ func (h handlers) detail(c *gin.Context) {
 		respondError(c, editErr)
 		return
 	}
-	c.HTML(http.StatusOK, "migrations.html", gin.H{"Page": "detail", "DatabaseID": dbID, "Migration": migration, "Executions": executions, "CanEdit": editErr == nil})
+	render(c, gin.H{"Page": "detail", "DatabaseID": dbID, "Migration": migration, "Executions": executions, "CanEdit": editErr == nil})
 }
 
 func (h handlers) edit(c *gin.Context) {
@@ -131,7 +163,7 @@ func (h handlers) edit(c *gin.Context) {
 		respondError(c, ErrConflict)
 		return
 	}
-	c.HTML(http.StatusOK, "migrations.html", gin.H{"Page": "edit", "DatabaseID": dbID, "Migration": migration, "CSRFToken": auth.CSRFToken(c)})
+	render(c, gin.H{"Page": "edit", "DatabaseID": dbID, "Migration": migration})
 }
 
 func (h handlers) update(c *gin.Context) {
@@ -169,7 +201,7 @@ func (h handlers) execution(c *gin.Context) {
 		respondError(c, err)
 		return
 	}
-	c.HTML(http.StatusOK, "migrations.html", gin.H{"Page": "execution", "DatabaseID": dbID, "MigrationID": migrationID, "Execution": execution})
+	render(c, gin.H{"Page": "execution", "DatabaseID": dbID, "MigrationID": migrationID, "Execution": execution})
 }
 
 func migrationIDs(c *gin.Context) (int64, int64, bool) {
@@ -199,11 +231,15 @@ func respondError(c *gin.Context, err error) {
 		c.String(http.StatusNotFound, "%s", ErrNotFound)
 	case errors.Is(err, ErrConflict):
 		c.String(http.StatusConflict, "%s", ErrConflict)
+	case errors.Is(err, database.ErrTargetUnavailable), errors.Is(err, ErrTargetUnavailable):
+		c.String(http.StatusServiceUnavailable, "%s", database.ErrTargetUnavailable)
 	default:
 		c.String(http.StatusInternalServerError, "Terjadi kesalahan internal")
 	}
 }
 
-func notImplemented(c *gin.Context) {
-	c.String(http.StatusNotImplemented, "Not Implemented")
+func render(c *gin.Context, data gin.H) {
+	data["User"], _ = auth.CurrentUser(c)
+	data["CSRFToken"] = auth.CSRFToken(c)
+	c.HTML(http.StatusOK, "migrations.html", data)
 }

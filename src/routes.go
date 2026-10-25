@@ -23,6 +23,7 @@ import (
 type Dependencies struct {
 	Config     Config
 	PlatformDB *sql.DB
+	TargetDB   database.TargetProvider
 }
 
 func newRouter(deps Dependencies) (*gin.Engine, error) {
@@ -47,6 +48,7 @@ func newRouter(deps Dependencies) (*gin.Engine, error) {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	router := gin.New()
+	router.UseRawPath = true
 	router.Use(
 		gin.CustomRecoveryWithWriter(io.Discard, func(c *gin.Context, _ any) {
 			path := c.FullPath()
@@ -68,8 +70,8 @@ func newRouter(deps Dependencies) (*gin.Engine, error) {
 		GracePeriod:      deps.Config.SessionGracePeriod,
 		SecureCookie:     deps.Config.AppEnv == "production",
 	})
-	database.RegisterRoutes(router, deps.PlatformDB)
-	migration.RegisterRoutes(router, deps.PlatformDB)
+	database.RegisterRoutes(router, deps.PlatformDB, deps.TargetDB)
+	migration.RegisterRoutes(router, deps.PlatformDB, deps.TargetDB)
 	admin.RegisterRoutes(router, deps.PlatformDB)
 	return router, nil
 }

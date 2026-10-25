@@ -1,35 +1,19 @@
-package auth
+package auth_test
 
 import (
 	"context"
 	"database/sql"
 	"errors"
-	"os"
 	"testing"
-
-	_ "github.com/jackc/pgx/v5/stdlib"
+	. "tubes-wbd/src/auth"
+	testdb "tubes-wbd/test/database"
 )
 
 // buka test-db dan kosongin tabel, skip kalau TEST_DATABASE_URL ga diisi.
 // Schema dari folder sql/ harus sudah dijalankan di database ini.
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("TEST_DATABASE_URL kosong, integration test dilewati")
-	}
-
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
-
-	_, err = db.Exec(`TRUNCATE users, groups, database_connections RESTART IDENTITY CASCADE`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return db
+	return testdb.Open(t)
 }
 
 // bikin user baru dan balikin id-nya
