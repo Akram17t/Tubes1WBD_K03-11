@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
 	"database/sql"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -24,15 +26,16 @@ import (
 const targetConnectTimeout = 5 * time.Second
 
 var (
-	ErrInvalidConnection     = errors.New("konfigurasi koneksi tidak valid")
-	ErrConnectionNotFound    = errors.New("koneksi tidak ditemukan")
-	ErrConnectionInactive    = errors.New("koneksi nonaktif tidak dapat digunakan")
-	ErrConnectionNameExists  = errors.New("nama koneksi sudah digunakan")
-	ErrConnectionKey         = errors.New("kunci enkripsi koneksi harus berukuran 32 byte")
-	ErrConnectionCredentials = errors.New("kredensial koneksi tidak dapat digunakan")
-	ErrTargetUnavailable     = errors.New("koneksi target gagal; periksa host, port, TLS, dan kredensial")
-	ErrTargetTimeout         = errors.New("koneksi target melewati batas waktu")
-	ErrConnectionStorage     = errors.New("konfigurasi koneksi tidak dapat dibaca")
+	ErrInvalidConnection      = errors.New("konfigurasi koneksi tidak valid")
+	ErrConnectionNotFound     = errors.New("koneksi tidak ditemukan")
+	ErrConnectionInactive     = errors.New("koneksi nonaktif tidak dapat digunakan")
+	ErrConnectionNameExists   = errors.New("nama koneksi sudah digunakan")
+	ErrConnectionTargetExists = errors.New("target sudah terdaftar; gunakan koneksi yang sudah ada")
+	ErrConnectionKey          = errors.New("kunci enkripsi koneksi harus berukuran 32 byte")
+	ErrConnectionCredentials  = errors.New("kredensial koneksi tidak dapat digunakan")
+	ErrTargetUnavailable      = errors.New("koneksi target gagal; periksa host, port, TLS, dan kredensial")
+	ErrTargetTimeout          = errors.New("koneksi target melewati batas waktu")
+	ErrConnectionStorage      = errors.New("konfigurasi koneksi tidak dapat dibaca")
 )
 
 // Connection is safe to pass to templates: it never contains a stored password.
@@ -258,6 +261,10 @@ func (s *ConnectionService) openRegistered(ctx context.Context, id int64, author
 			s.invalidatePool(id, cached.pool)
 			return nil, connectionOpenError(ctx, ErrTargetUnavailable)
 		}
+		if err := validateTarget(ctx, tx, cached.pool); err != nil {
+			s.invalidatePool(id, cached.pool)
+			return nil, err
+		}
 		if err := tx.Commit(); err != nil {
 			return nil, connectionOpenError(ctx, ErrConnectionStorage)
 		}
@@ -272,6 +279,10 @@ func (s *ConnectionService) openRegistered(ctx context.Context, id int64, author
 	}
 	pool, err := connectTarget(ctx, targetDSN(stored.Connection, password))
 	if err != nil {
+		return nil, err
+	}
+	if err := validateTarget(ctx, tx, pool); err != nil {
+		pool.Close()
 		return nil, err
 	}
 	// Publish while holding the cache lock and committing the row lock. A
@@ -295,6 +306,26 @@ func (s *ConnectionService) openRegistered(ctx context.Context, id int64, author
 	}
 	s.pools[id] = cachedTarget{configuration: stored, pool: pool}
 	return pool, nil
+}
+
+func validateTarget(ctx context.Context, platform *sql.Tx, target *sql.DB) error {
+	var nonce [8]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return ErrTargetUnavailable
+	}
+	key := -int64(binary.LittleEndian.Uint64(nonce[:])>>1) - 1
+	// Lock transaksi mendeteksi database yang sama meski host atau username berbeda.
+	if _, err := platform.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, key); err != nil {
+		return connectionOpenError(ctx, ErrConnectionStorage)
+	}
+	var separate bool
+	if err := target.QueryRowContext(ctx, `SELECT pg_try_advisory_xact_lock($1)`, key).Scan(&separate); err != nil {
+		return connectionOpenError(ctx, ErrTargetUnavailable)
+	}
+	if !separate {
+		return fmt.Errorf("%w: database platform tidak boleh menjadi target", ErrInvalidConnection)
+	}
+	return nil
 }
 
 // TargetProvider returns a shared, provider-owned pool. It does not authorize

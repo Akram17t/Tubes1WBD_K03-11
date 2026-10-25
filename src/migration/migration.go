@@ -229,7 +229,8 @@ func ExecuteMigration(ctx context.Context, db, targetDB *sql.DB, user *auth.User
 		return nil, ErrTargetUnavailable
 	}
 	defer discardConnection(target)
-	if _, err := target.ExecContext(ctx, `SELECT pg_catalog.pg_advisory_lock($1)`, dbID); err != nil {
+	var locked bool
+	if err := target.QueryRowContext(ctx, `SELECT pg_catalog.pg_try_advisory_lock($1)`, dbID).Scan(&locked); err != nil || !locked {
 		return nil, ErrTargetUnavailable
 	}
 	if err := auth.Authorize(ctx, platform, user, auth.ExecuteMigration, dbID); err != nil {

@@ -43,6 +43,10 @@ func RecoverRunning(ctx context.Context, db *sql.DB, targets database.TargetProv
 }
 
 func recoverDatabase(ctx context.Context, db *sql.DB, targets database.TargetProvider, id int64) error {
+	pool, err := database.TargetConnection(ctx, db, targets, id)
+	if err != nil {
+		return err
+	}
 	platform, err := db.Conn(ctx)
 	if err != nil {
 		return err
@@ -54,10 +58,6 @@ func recoverDatabase(ctx context.Context, db *sql.DB, targets database.TargetPro
 	}
 	if !locked {
 		return nil
-	}
-	pool, err := database.TargetConnection(ctx, db, targets, id)
-	if err != nil {
-		return err
 	}
 	target, err := pool.Conn(ctx)
 	if err != nil {

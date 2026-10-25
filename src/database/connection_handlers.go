@@ -44,7 +44,7 @@ func (h connectionHandler) create(c *gin.Context) {
 	input := connectionFormInput(c)
 	user, _ := auth.CurrentUser(c)
 	if err := h.service.Create(c.Request.Context(), user, input); err != nil {
-		if errors.Is(err, ErrInvalidConnection) || errors.Is(err, ErrConnectionNameExists) {
+		if errors.Is(err, ErrInvalidConnection) || errors.Is(err, ErrConnectionNameExists) || errors.Is(err, ErrConnectionTargetExists) {
 			renderConnectionForm(c, connectionStatus(err), safeFormConnection(0, input), err.Error())
 		} else {
 			connectionError(c, err)
@@ -70,7 +70,7 @@ func (h connectionHandler) update(c *gin.Context) {
 	input := connectionFormInput(c)
 	user, _ := auth.CurrentUser(c)
 	if err := h.service.Update(c.Request.Context(), user, connection.ID, input); err != nil {
-		if errors.Is(err, ErrInvalidConnection) || errors.Is(err, ErrConnectionNameExists) {
+		if errors.Is(err, ErrInvalidConnection) || errors.Is(err, ErrConnectionNameExists) || errors.Is(err, ErrConnectionTargetExists) {
 			form := safeFormConnection(connection.ID, input)
 			form.IsActive = connection.IsActive
 			renderConnectionForm(c, connectionStatus(err), form, err.Error())
@@ -153,7 +153,7 @@ func connectionStatus(err error) int {
 		return http.StatusNotFound
 	case errors.Is(err, auth.ErrForbidden):
 		return http.StatusForbidden
-	case errors.Is(err, ErrConnectionNameExists), errors.Is(err, ErrConnectionInactive):
+	case errors.Is(err, ErrConnectionNameExists), errors.Is(err, ErrConnectionTargetExists), errors.Is(err, ErrConnectionInactive):
 		return http.StatusConflict
 	case errors.Is(err, ErrTargetTimeout):
 		return http.StatusGatewayTimeout

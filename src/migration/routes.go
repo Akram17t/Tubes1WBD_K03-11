@@ -24,12 +24,38 @@ func RegisterRoutes(router gin.IRoutes, db *sql.DB, targets database.TargetProvi
 	router.GET("/databases/:dbID/migrations/:migrationID/edit", login, h.edit)
 	router.POST("/databases/:dbID/migrations/:migrationID/update", login, csrf, h.update)
 	router.POST("/databases/:dbID/migrations/:migrationID/execute", login, csrf, h.execute)
+	router.POST("/databases/:dbID/migrations/:migrationID/recover", login, csrf, h.recover)
 	router.GET("/databases/:dbID/migrations/:migrationID/executions/:executionID", login, h.execution)
 }
 
 type handlers struct {
 	db      *sql.DB
 	targets database.TargetProvider
+}
+
+func (h handlers) recover(c *gin.Context) {
+	dbID, migrationID, ok := migrationIDs(c)
+	if !ok {
+		return
+	}
+	ctx := c.Request.Context()
+	user, _ := auth.CurrentUser(c)
+	if err := auth.Authorize(ctx, h.db, user, auth.ExecuteMigration, dbID); err != nil {
+		respondError(c, err)
+		return
+	}
+	m, err := GetMigration(ctx, h.db, user, dbID, migrationID)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	if m.Status == "running" {
+		if err := recoverDatabase(ctx, h.db, h.targets, dbID); err != nil {
+			respondError(c, err)
+			return
+		}
+	}
+	c.Redirect(http.StatusSeeOther, fmt.Sprintf("/databases/%d/migrations/%d", dbID, migrationID))
 }
 
 func (h handlers) execute(c *gin.Context) {

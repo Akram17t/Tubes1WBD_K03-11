@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 
 	"tubes-wbd/src/auth"
 
@@ -163,7 +164,7 @@ func (h viewerHandler) data(c *gin.Context) {
 
 func tableDataURL(id int64, schema, table string, limit, offset int) string {
 	query := url.Values{"schema": {schema}, "limit": {strconv.Itoa(limit)}, "offset": {strconv.Itoa(offset)}}
-	return fmt.Sprintf("/databases/%d/tables/%s/data?%s", id, url.PathEscape(table), query.Encode())
+	return fmt.Sprintf("/databases/%d/tables/%s/data?%s", id, strings.ReplaceAll(url.PathEscape(table), "+", "%2B"), query.Encode())
 }
 
 func respondError(c *gin.Context, err error) {

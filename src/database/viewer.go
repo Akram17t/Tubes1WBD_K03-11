@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"strings"
 )
@@ -234,6 +235,10 @@ func GetTableData(ctx context.Context, db *sql.DB, schema, table string, limit, 
 	if err != nil {
 		return nil, err
 	}
+	columnTypes, err := rows.ColumnTypes()
+	if err != nil {
+		return nil, err
+	}
 	data := &TableData{Columns: columns, Rows: [][]any{}, Limit: limit, Offset: offset}
 
 	for rows.Next() {
@@ -244,6 +249,15 @@ func GetTableData(ctx context.Context, db *sql.DB, schema, table string, limit, 
 		}
 		if err := rows.Scan(pointers...); err != nil {
 			return nil, err
+		}
+		for i, value := range values {
+			if raw, ok := value.([]byte); ok {
+				if columnTypes[i].DatabaseTypeName() == "BYTEA" {
+					values[i] = `\x` + hex.EncodeToString(raw)
+				} else {
+					values[i] = string(raw)
+				}
+			}
 		}
 		data.Rows = append(data.Rows, values)
 	}

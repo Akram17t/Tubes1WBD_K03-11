@@ -121,8 +121,13 @@ func (r connectionRepository) affectedUserIDs(ctx context.Context, id int64) ([]
 
 func connectionDatabaseError(err error) error {
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "database_connections_name_key" {
-		return ErrConnectionNameExists
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		switch pgErr.ConstraintName {
+		case "database_connections_name_key":
+			return ErrConnectionNameExists
+		case "database_connections_target_key":
+			return ErrConnectionTargetExists
+		}
 	}
 	return err
 }

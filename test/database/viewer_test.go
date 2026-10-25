@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"html"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -131,5 +133,41 @@ func TestViewerRoutesPermissionsAndEscapedIdentifiers(t *testing.T) {
 	cookie := testdb.Login(t, r2, "viewer")
 	if w := testdb.Request(r2, "GET", "/databases/1/schema", nil, cookie); w.Code != 503 {
 		t.Fatalf("provider belum ada: %d", w.Code)
+	}
+}
+
+func TestViewerJSONAndGeneratedTableLinks(t *testing.T) {
+	f := testdb.New(t)
+	ctx := context.Background()
+	name := "a/b+c d%?"
+	testdb.Exec(t, f.Target, `CREATE TABLE public."a/b+c d%?" (id bigint PRIMARY KEY, payload jsonb, original json, binary_data bytea);
+		INSERT INTO public."a/b+c d%?" VALUES (1,'{"a":1}','{"b":"<script>alert(1)</script>"}',decode('00ff','hex')),(2,NULL,NULL,NULL);
+		INSERT INTO public."a/b+c d%?" (id,payload) SELECT n,'{}' FROM generate_series(3,51) n`)
+	data, err := database.GetTableData(ctx, f.Target, "public", name, 50, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.Rows[0][1] != `{"a": 1}` || data.Rows[0][2] != `{"b":"<script>alert(1)</script>"}` || data.Rows[0][3] != `\x00ff` || data.Rows[1][1] != nil {
+		t.Fatalf("nilai JSON/binary/NULL berubah: %+v", data.Rows[:2])
+	}
+	r := f.Router(t)
+	database.RegisterRoutes(r, f.Platform, f.Provider)
+	cookie := testdb.Login(t, r, "viewer")
+	page := testdb.Request(r, "GET", "/databases/1/schema?"+url.Values{"table": {name}}.Encode(), nil, cookie)
+	if page.Code != 200 {
+		t.Fatalf("schema: %d %s", page.Code, page.Body.String())
+	}
+	for _, label := range []string{"Lihat data", "Berikutnya"} {
+		link := regexp.MustCompile(`href="([^"]+)"[^>]*>` + label + `</a>`).FindStringSubmatch(page.Body.String())
+		if link == nil {
+			t.Fatalf("tautan %s tidak ditemukan", label)
+		}
+		page = testdb.Request(r, "GET", html.UnescapeString(link[1]), nil, cookie)
+		if page.Code != 200 {
+			t.Fatalf("tautan %s rusak: %d %s", label, page.Code, page.Body.String())
+		}
+		if label == "Lihat data" && (!strings.Contains(html.UnescapeString(page.Body.String()), `{"a": 1}`) || !strings.Contains(page.Body.String(), "&lt;script&gt;") || strings.Contains(page.Body.String(), "<script>alert")) {
+			t.Fatal("JSON tidak ditampilkan sebagai teks yang aman")
+		}
 	}
 }

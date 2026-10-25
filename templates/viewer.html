@@ -26,6 +26,7 @@
                   {{if .IsPlatformAdmin}}
                   <a href="/admin/users">User</a>
                   <a href="/admin/groups">Group</a>
+                  <a href="/admin/databases">Koneksi database</a>
                   {{end}}
                   <span class="ms-auto">{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Username}}{{end}}</span>
                   <form method="post" action="/logout">

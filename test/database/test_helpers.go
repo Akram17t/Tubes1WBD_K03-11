@@ -1,20 +1,24 @@
 package database
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"tubes-wbd/src/auth"
+	appdb "tubes-wbd/src/database"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 )
 
 type Fixture struct {
@@ -35,7 +39,8 @@ func New(t *testing.T) *Fixture {
 	Exec(t, f.Platform, `
 		INSERT INTO database_connections (id,name,host,database_name,db_username,password_encrypted,ssl_mode,created_by)
 		VALUES (1,'Football','secret-host','secret-db','secret-user','secret-password','disable',1),
-		(2,'Other','secret-host','secret-db','secret-user','secret-password','disable',1);
+		(2,'Other','secret-host','secret-other-db','secret-user','secret-password','disable',1);
+		SELECT setval(pg_get_serial_sequence('database_connections','id'),2,true);
 		INSERT INTO groups (id,name) VALUES (1,'editors'),(2,'viewers');
 		INSERT INTO user_groups (user_id,group_id) VALUES (1,1),(2,2);
 		INSERT INTO group_database_access (group_id,database_id,access_level,granted_by)
@@ -58,6 +63,40 @@ func (f *Fixture) Provider(_ context.Context, id int64) (*sql.DB, error) {
 		return nil, errors.New("target tidak tersedia")
 	}
 	return f.Target, nil
+}
+
+func ConnectionInput(t *testing.T, dsn string) appdb.ConnectionInput {
+	t.Helper()
+	config, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sslMode := u.Query().Get("sslmode")
+	if sslMode == "" {
+		sslMode = "prefer"
+	}
+	password := config.Password
+	if password == "" {
+		password = "integration-password"
+	}
+	return appdb.ConnectionInput{Name: "Football", Host: config.Host, Port: int(config.Port), DatabaseName: config.Database, DBUsername: config.User, SSLMode: sslMode, Password: password}
+}
+
+func (f *Fixture) Connections(t *testing.T) *appdb.ConnectionService {
+	t.Helper()
+	service, err := appdb.NewConnectionService(f.Platform, bytes.Repeat([]byte{7}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { service.Close() })
+	if err := service.Update(context.Background(), &auth.User{ID: 4, IsPlatformAdmin: true}, 1, ConnectionInput(t, os.Getenv("TEST_TARGET_DATABASE_URL"))); err != nil {
+		t.Fatal(err)
+	}
+	return service
 }
 
 func (f *Fixture) Router(t *testing.T) *gin.Engine {
