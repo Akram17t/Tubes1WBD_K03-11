@@ -26,6 +26,7 @@
 
         <h2>Anggota group</h2>
         {{if .Members}}
+        <div class="table-responsive" role="region" aria-label="Anggota group" tabindex="0">
         <table>
             <thead><tr><th scope="col">Username</th><th scope="col">Nama</th><th scope="col">Status akun</th><th scope="col">Aksi</th></tr></thead>
             <tbody>
@@ -37,13 +38,14 @@
                     <td>
                         <form method="post" action="/admin/groups/{{$.Group.ID}}/members/{{.ID}}/remove">
                             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                            <button type="submit">Keluarkan anggota</button>
+                            <button class="btn btn-sm btn-outline-danger" type="submit">Keluarkan anggota</button>
                         </form>
                     </td>
                 </tr>
                 {{end}}
             </tbody>
         </table>
+        </div>
         {{else}}
         <p>Belum ada anggota.</p>
         {{end}}
@@ -65,12 +67,14 @@
         <p>Tidak ada user lain yang dapat ditambahkan.</p>
         {{end}}
 
+        <section class="danger-zone" aria-label="Hapus group">
         <h2>Hapus group</h2>
         <p>Penghapusan juga menghapus keanggotaan dan akses database milik group. Seluruh session anggota akan dicabut.</p>
         <form method="post" action="/admin/groups/{{.Group.ID}}/delete">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-            <button type="submit">Hapus group</button>
+            <button class="btn btn-outline-danger" type="submit">Hapus group</button>
         </form>
+        </section>
     </main>
 </body>
 </html>

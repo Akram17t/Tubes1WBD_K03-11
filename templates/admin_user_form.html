@@ -7,14 +7,14 @@
   <body class="bg-light">
     {{template "nav" .}}
 
-    <main class="container" style="max-width: 540px">
-      <h3 class="mb-3">{{if .IsNew}}Tambah user{{else}}Edit user{{end}}</h3>
+    <main class="container page page-narrow">
+      <h1 class="mb-3">{{if .IsNew}}Tambah user{{else}}Edit user{{end}}</h1>
 
       {{if .Error}}
-      <div class="alert alert-danger">{{.Error}}</div>
+      <div class="alert alert-danger" role="alert">{{.Error}}</div>
       {{end}}
 
-      <form method="post" action="{{.Action}}" class="card card-body">
+      <form method="post" action="{{.Action}}">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
 
         <label class="form-label" for="username">Username</label>
@@ -35,7 +35,7 @@
         </div>
 
         <div class="d-flex gap-2">
-          <button type="submit" class="btn btn-dark">Simpan</button>
+          <button type="submit" class="btn btn-primary">Simpan</button>
           <a href="/admin/users" class="btn btn-link">Batal</a>
         </div>
       </form>

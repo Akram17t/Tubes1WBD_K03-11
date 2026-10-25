@@ -8,7 +8,7 @@
   <a href="/admin/databases">Kembali ke daftar koneksi</a>
   {{if .Error}}<p role="alert">{{.Error}}</p>{{end}}
   {{if .TestOK}}<p role="status">Uji koneksi berhasil.</p>{{end}}
-  <form method="post" action="/admin/databases{{if .Connection.ID}}/{{.Connection.ID}}/update{{end}}">
+  <form class="connection-form" method="post" action="/admin/databases{{if .Connection.ID}}/{{.Connection.ID}}/update{{end}}">
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <p><label>Nama <input name="name" value="{{.Connection.Name}}" maxlength="100" required></label></p>
     <p><label>Host <input name="host" value="{{.Connection.Host}}" required></label></p>
@@ -17,19 +17,21 @@
     <p><label>Username database <input name="db_username" value="{{.Connection.DBUsername}}" autocomplete="off" required></label></p>
     <p><label>Password <input type="password" name="password" autocomplete="new-password" {{if not .Connection.ID}}required{{end}}></label>
       {{if .Connection.ID}}<small>Kosongkan untuk mempertahankan password lama.</small>{{end}}</p>
-    <p><label>SSL mode <select name="ssl_mode">{{range .SSLModes}}<option value="{{.}}" {{if eq . $.Connection.SSLMode}}selected{{end}}>{{.}}</option>{{end}}</select></label></p>
+    <p><label for="ssl_mode">SSL mode</label><select id="ssl_mode" name="ssl_mode">{{range .SSLModes}}<option value="{{.}}" {{if eq . $.Connection.SSLMode}}selected{{end}}>{{.}}</option>{{end}}</select></p>
     <button type="submit">Simpan</button>
   </form>
   {{if .Connection.ID}}
+  <section class="connection-status" aria-label="Status dan pengujian koneksi">
   <p>Status: {{if .Connection.IsActive}}Aktif{{else}}Nonaktif{{end}}</p>
   {{if .Connection.IsActive}}
   <form method="post" action="/admin/databases/{{.Connection.ID}}/test">
-    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button type="submit">Uji koneksi tersimpan</button>
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="btn btn-outline-primary" type="submit">Uji koneksi tersimpan</button>
   </form>
   {{end}}
   <form method="post" action="/admin/databases/{{.Connection.ID}}/{{if .Connection.IsActive}}deactivate{{else}}activate{{end}}">
-    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button type="submit">{{if .Connection.IsActive}}Nonaktifkan{{else}}Aktifkan{{end}}</button>
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="btn {{if .Connection.IsActive}}btn-outline-danger{{else}}btn-outline-success{{end}}" type="submit">{{if .Connection.IsActive}}Nonaktifkan{{else}}Aktifkan{{end}}</button>
   </form>
+  </section>
   {{end}}
 </main>
 </body>

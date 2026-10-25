@@ -1,7 +1,12 @@
 /* gaya dasar buat halaman yang markup-nya polos (group, akses, koneksi) */
 .page {
-  max-width: 960px;
-  padding-bottom: 3rem;
+  max-width: 1200px;
+  width: calc(100% - 1.5rem);
+  margin: 0 auto 2rem;
+  padding: 1.5rem;
+  background: #fff;
+  border: 1px solid #e4e7ec;
+  border-radius: 0.75rem;
 }
 .page h1 {
   font-size: 1.75rem;
@@ -33,6 +38,7 @@
   align-items: center;
   gap: 0.5rem;
   margin: 0 0.25rem 0 0;
+  flex-wrap: wrap;
 }
 
 .page form p {
@@ -46,7 +52,7 @@
 .page td label {
   display: inline;
 }
-.page input:not([type="hidden"]),
+.page input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
 .page select,
 .page textarea {
   display: block;
@@ -61,15 +67,15 @@
   width: auto;
 }
 
-.page button {
+.page button:not(.btn) {
   padding: 0.4rem 0.9rem;
   color: #fff;
-  background: #212529;
-  border: 1px solid #212529;
+  background: #1266f1;
+  border: 1px solid #1266f1;
   border-radius: 0.375rem;
   cursor: pointer;
 }
-.page td button {
+.page td button:not(.btn) {
   padding: 0.25rem 0.6rem;
   font-size: 0.875rem;
   color: #212529;
@@ -94,4 +100,83 @@
 .page select + button,
 .page > a + form {
   margin-top: 0.75rem;
+}
+
+.page-heading,
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+.page-heading {
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+.page-heading h1 {
+  margin: 0;
+}
+.page-narrow {
+  max-width: 640px;
+}
+.connection-form {
+  max-width: 720px;
+}
+.connection-status,
+.danger-zone {
+  margin-top: 2rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #e4e7ec;
+}
+.connection-status form {
+  display: inline-block;
+  margin: 0 0.5rem 0.5rem 0;
+}
+.page pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.page .form-check-label {
+  display: inline;
+}
+.page .table-responsive {
+  margin-bottom: 1rem;
+}
+.data-grid {
+  max-height: 65vh;
+  overflow: auto;
+}
+.data-grid thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8f9fa;
+}
+.page nav[aria-label="Halaman data"] {
+  margin-bottom: 1rem;
+}
+.navbar > .container {
+  gap: 0.75rem;
+}
+@media (max-width: 575px) {
+  .page {
+    padding: 1rem;
+  }
+  .page h1 {
+    font-size: 1.5rem;
+  }
+  .navbar > .container {
+    justify-content: flex-start;
+  }
+  .navbar .d-flex {
+    width: 100%;
+    gap: 0.75rem !important;
+  }
+  .navbar form {
+    margin-left: auto !important;
+  }
+  .page td,
+  .page th {
+    padding: 0.5rem;
+  }
 }

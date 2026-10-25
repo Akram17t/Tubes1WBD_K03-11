@@ -7,9 +7,12 @@
 <body class="bg-light">
 {{template "nav" .}}
     <main class="container page">
-        <h1>Daftar group</h1>
-        <p><a href="/admin/groups/new">Buat group</a></p>
+        <div class="page-heading">
+            <h1>Daftar group</h1>
+            <a class="btn btn-primary" href="/admin/groups/new">Buat group</a>
+        </div>
         {{if .Groups}}
+        <div class="table-responsive" role="region" aria-label="Daftar group" tabindex="0">
         <table>
             <thead><tr><th scope="col">Nama</th><th scope="col">Deskripsi</th><th scope="col">Aksi</th></tr></thead>
             <tbody>
@@ -25,6 +28,7 @@
                 {{end}}
             </tbody>
         </table>
+        </div>
         {{else}}
         <p>Belum ada group.</p>
         {{end}}

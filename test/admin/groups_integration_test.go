@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -228,6 +229,33 @@ func TestDatabaseAccessGrantAndRevoke(t *testing.T) {
 	}
 	if w := adminPost(t, r, admin, revoke, nil); w.Code != http.StatusNotFound {
 		t.Errorf("cabut akses yang ga ada: dapat %d, harusnya 404", w.Code)
+	}
+}
+
+func TestDatabaseAccessFormOnlyOffersUnassignedTargets(t *testing.T) {
+	db := openTestDB(t)
+	r := newAdminRouter(db)
+	adminID := insertUser(t, db, "admin", true)
+	groupID := insertGroup(t, db, "analyst")
+	first := insertConnection(t, db, "football", adminID)
+	second := insertConnection(t, db, "training", adminID)
+	admin := login(r, "admin")
+	path := "/admin/groups/" + idString(groupID) + "/database-access"
+	form := url.Values{"database_id": {idString(first)}, "access_level": {"view"}}
+	if w := adminPost(t, r, admin, path, form); w.Code != http.StatusSeeOther {
+		t.Fatal("gagal menyiapkan akses group")
+	}
+	page := send(r, http.MethodGet, path, nil, admin)
+	if page.Code != http.StatusOK || strings.Contains(page.Body.String(), `<option value="`+idString(first)+`"`) || !strings.Contains(page.Body.String(), `<option value="`+idString(second)+`"`) {
+		t.Fatal("form tambah akses harus hanya menawarkan target yang belum diberikan")
+	}
+	form.Set("database_id", idString(second))
+	if w := adminPost(t, r, admin, path, form); w.Code != http.StatusSeeOther {
+		t.Fatal("gagal memberikan akses kedua")
+	}
+	page = send(r, http.MethodGet, path, nil, admin)
+	if strings.Contains(page.Body.String(), `id="database_id"`) || !strings.Contains(page.Body.String(), `name="access_level"`) {
+		t.Fatal("form tambah disembunyikan setelah semua target diberikan, perubahan akses tetap tersedia")
 	}
 }
 

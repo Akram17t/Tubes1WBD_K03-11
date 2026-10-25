@@ -13,6 +13,7 @@
 
         <h2>Pemberian akses</h2>
         {{if .Grants}}
+        <div class="table-responsive" role="region" aria-label="Pemberian akses" tabindex="0">
         <table>
             <thead><tr><th scope="col">Database</th><th scope="col">Status</th><th scope="col">Akses</th><th scope="col">Aksi</th></tr></thead>
             <tbody>
@@ -31,24 +32,25 @@
                                 <option value="view"{{if eq .AccessLevel "view"}} selected{{end}}>view</option>
                                 <option value="edit"{{if eq .AccessLevel "edit"}} selected{{end}}>edit</option>
                             </select>
-                            <button type="submit">Simpan akses</button>
+                            <button class="btn btn-sm btn-outline-primary" type="submit">Simpan akses</button>
                         </form>
                         {{end}}
                         <form method="post" action="/admin/groups/{{$.Group.ID}}/database-access/{{.DatabaseID}}/revoke">
                             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                            <button type="submit">Cabut akses</button>
+                            <button class="btn btn-sm btn-outline-danger" type="submit">Cabut akses</button>
                         </form>
                     </td>
                 </tr>
                 {{end}}
             </tbody>
         </table>
+        </div>
         {{else}}
         <p>Group ini belum memiliki akses database.</p>
         {{end}}
 
-        <h2>Atur akses database</h2>
         {{if .Databases}}
+        <h2>Tambah akses database</h2>
         <form method="post" action="/admin/groups/{{.Group.ID}}/database-access">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             <p>
@@ -67,11 +69,11 @@
                     <option value="edit"{{if eq .SelectedLevel "edit"}} selected{{end}}>edit</option>
                 </select>
             </p>
-            <p>edit mencakup seluruh kemampuan view. Pilih database yang sudah tercantum untuk mengubah aksesnya.</p>
-            <button type="submit">Simpan akses</button>
+            <p class="text-muted">edit mencakup seluruh kemampuan view. Ubah akses yang sudah ada melalui tabel di atas.</p>
+            <button type="submit">Tambah akses</button>
         </form>
         {{else}}
-        <p>Belum ada database aktif yang dapat diberikan akses.</p>
+        <p class="text-muted">Tidak ada database aktif lain yang dapat ditambahkan. Akses yang sudah ada dapat diubah melalui tabel di atas.</p>
         {{end}}
     </main>
 </body>

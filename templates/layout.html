@@ -5,12 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="stylesheet" href="/static/login/bootstrap-login-form.min.css" />
 <link rel="stylesheet" href="/static/style.css" />
+<link rel="icon" href="data:," />
 {{end}}
 
 {{define "nav"}}
-<nav class="navbar navbar-light bg-white shadow-sm mb-4">
+<nav class="navbar navbar-light bg-white shadow-sm mb-4" aria-label="Navigasi utama">
   <div class="container">
-    <a href="/databases" class="navbar-brand">DB Platform</a>
+    <span class="navbar-brand mb-0">DB Platform</span>
     {{with .User}}
     <div class="d-flex flex-wrap align-items-center gap-3">
       <a href="/databases">Database</a>

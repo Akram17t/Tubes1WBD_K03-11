@@ -1,176 +1,144 @@
 <!doctype html>
 <html lang="id">
   <head>
-    <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, shrink-to-fit=no"
-    />
     <title>Viewer | DB Platform</title>
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap"
-    />
-    <link rel="stylesheet" href="/static/login/bootstrap-login-form.min.css" />
+    {{template "head"}}
   </head>
-  <body>
-    <section class="min-vh-100" style="background-color: #508bfc">
-      <div class="container py-5">
-        <div class="row d-flex justify-content-center">
-          <div class="col-12">
-            <div class="card shadow-2-strong" style="border-radius: 1rem">
-              <main class="card-body p-4 p-md-5">
-                <nav class="d-flex flex-wrap align-items-center gap-3 mb-4" aria-label="Navigasi utama">
-                  <a href="/databases">Daftar database</a>
-                  {{with .User}}
-                  {{if .IsPlatformAdmin}}
-                  <a href="/admin/users">User</a>
-                  <a href="/admin/groups">Group</a>
-                  <a href="/admin/databases">Koneksi database</a>
-                  {{end}}
-                  <span class="ms-auto">{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Username}}{{end}}</span>
-                  <form method="post" action="/logout">
-                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-                    <button class="btn btn-light btn-sm" type="submit">Logout</button>
-                  </form>
-                  {{end}}
-                </nav>
-                <nav class="d-flex flex-wrap gap-3 mb-4" aria-label="Navigasi database">
-                  <a href="/databases/{{.Database.ID}}">{{.Database.Name}}</a>
-                  <a href="/databases/{{.Database.ID}}/schema">Schema</a>
-                  <a href="/databases/{{.Database.ID}}/migrations">Migration</a>
-                </nav>
+  <body class="bg-light">
+    {{template "nav" .}}
+    <main class="container page">
+      <nav class="d-flex flex-wrap gap-3 mb-4" aria-label="Navigasi database">
+        <a href="/databases/{{.Database.ID}}">{{.Database.Name}}</a>
+        {{if eq .Page "schema"}}<span aria-current="page">Schema</span>{{else}}<a href="/databases/{{.Database.ID}}/schema">Schema</a>{{end}}
+        <a href="/databases/{{.Database.ID}}/migrations">Migration</a>
+      </nav>
 
-                {{if eq .Page "data"}}
-                <h1 class="h3 text-break mb-4">Data {{.Schema}}.{{.Table}}</h1>
-                {{with .Data}}
-                <p class="text-muted">Menampilkan {{len .Rows}} baris, mulai dari offset {{.Offset}}. Batas per halaman: {{.Limit}}.</p>
-                <div class="table-responsive mb-4" role="region" aria-label="Data tabel" tabindex="0">
-                  <table class="table align-middle text-nowrap">
-                    <thead>
-                      <tr>
-                        {{range .Columns}}
-                        <th scope="col">{{.}}</th>
-                        {{end}}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {{range .Rows}}
-                      <tr>
-                        {{range .}}
-                        <td class="text-break">{{if eq . nil}}<span class="text-muted">NULL</span>{{else}}{{.}}{{end}}</td>
-                        {{end}}
-                      </tr>
-                      {{else}}
-                      <tr><td colspan="{{len .Columns}}" class="text-muted">Tidak ada data pada halaman ini.</td></tr>
-                      {{end}}
-                    </tbody>
-                  </table>
-                </div>
-                {{end}}
-                <nav class="d-flex flex-wrap gap-3" aria-label="Halaman data">
-                  {{if .PreviousURL}}
-                  <a class="btn btn-light" href="{{.PreviousURL}}">Sebelumnya</a>
-                  {{end}}
-                  {{if .NextURL}}
-                  <a class="btn btn-primary" href="{{.NextURL}}">Berikutnya</a>
-                  {{end}}
-                </nav>
-
-                {{else}}
-                <h1 class="h3 mb-4">Schema dan struktur tabel</h1>
-                {{if .Schemas}}
-                <form class="row g-3 align-items-end mb-4" method="get" action="/databases/{{.Database.ID}}/schema">
-                  <div class="col-sm-8">
-                    <label class="form-label" for="schema">Schema</label>
-                    <select class="form-select" id="schema" name="schema">
-                      {{range .Schemas}}
-                      <option value="{{.}}" {{if eq . $.Schema}}selected{{end}}>{{.}}</option>
-                      {{end}}
-                    </select>
-                  </div>
-                  <div class="col-sm-4">
-                    <button class="btn btn-primary" type="submit">Pilih schema</button>
-                  </div>
-                </form>
-
-                {{if .Tables}}
-                <form class="row g-3 align-items-end mb-4" method="get" action="/databases/{{.Database.ID}}/schema">
-                  <input type="hidden" name="schema" value="{{.Schema}}" />
-                  <div class="col-sm-8">
-                    <label class="form-label" for="table">Tabel</label>
-                    <select class="form-select" id="table" name="table">
-                      {{range .Tables}}
-                      <option value="{{.}}" {{if eq . $.Table}}selected{{end}}>{{.}}</option>
-                      {{end}}
-                    </select>
-                  </div>
-                  <div class="col-sm-4">
-                    <button class="btn btn-primary" type="submit">Pilih tabel</button>
-                  </div>
-                </form>
-                {{if .Table}}
-                <h2 class="h4 text-break mb-3">{{.Schema}}.{{.Table}}</h2>
-                {{if .DataURL}}
-                <a class="btn btn-primary mb-4" href="{{.DataURL}}">Lihat data</a>
-                {{end}}
-
-                <h3 class="h5 mb-3">Kolom</h3>
-                <div class="table-responsive mb-4" role="region" aria-label="Kolom tabel" tabindex="0">
-                  <table class="table align-middle text-nowrap">
-                    <thead><tr><th scope="col">Nama</th><th scope="col">Tipe PostgreSQL</th><th scope="col">Boleh NULL</th></tr></thead>
-                    <tbody>
-                      {{range .Columns}}
-                      <tr><td>{{.Name}}</td><td>{{.DataType}}</td><td>{{if .Nullable}}Ya{{else}}Tidak{{end}}</td></tr>
-                      {{else}}
-                      <tr><td colspan="3" class="text-muted">Tidak ada kolom.</td></tr>
-                      {{end}}
-                    </tbody>
-                  </table>
-                </div>
-
-                <h3 class="h5 mb-3">Constraint</h3>
-                <div class="table-responsive mb-4" role="region" aria-label="Constraint tabel" tabindex="0">
-                  <table class="table align-middle text-nowrap">
-                    <thead><tr><th scope="col">Nama</th><th scope="col">Jenis</th><th scope="col">Definisi</th></tr></thead>
-                    <tbody>
-                      {{range .Constraints}}
-                      <tr><td>{{.Name}}</td><td>{{.Type}}</td><td><pre class="mb-0">{{.Definition}}</pre></td></tr>
-                      {{else}}
-                      <tr><td colspan="3" class="text-muted">Tidak ada constraint.</td></tr>
-                      {{end}}
-                    </tbody>
-                  </table>
-                </div>
-
-                <h3 class="h5 mb-3">Index</h3>
-                <div class="table-responsive" role="region" aria-label="Index tabel" tabindex="0">
-                  <table class="table align-middle text-nowrap">
-                    <thead><tr><th scope="col">Nama</th><th scope="col">Definisi</th></tr></thead>
-                    <tbody>
-                      {{range .Indexes}}
-                      <tr><td>{{.Name}}</td><td><pre class="mb-0">{{.Definition}}</pre></td></tr>
-                      {{else}}
-                      <tr><td colspan="2" class="text-muted">Tidak ada index.</td></tr>
-                      {{end}}
-                    </tbody>
-                  </table>
-                </div>
-                {{end}}
-                {{else}}
-                <p class="text-muted mb-0">Tidak ada tabel dalam schema ini.</p>
-                {{end}}
-                {{else}}
-                <p class="text-muted mb-0">Tidak ada schema yang dapat ditampilkan.</p>
-                {{end}}
-                {{end}}
-              </main>
-            </div>
-          </div>
-        </div>
+      {{if eq .Page "data"}}
+      <h1 class="h3 text-break mb-4">Data {{.Schema}}.{{.Table}}</h1>
+      <nav class="d-flex flex-wrap gap-3" aria-label="Halaman data">
+        {{if .PreviousURL}}
+        <a class="btn btn-light" href="{{.PreviousURL}}">Sebelumnya</a>
+        {{end}}
+        {{if .NextURL}}
+        <a class="btn btn-primary" href="{{.NextURL}}">Berikutnya</a>
+        {{end}}
+      </nav>
+      {{with .Data}}
+      <p class="text-muted">Menampilkan {{len .Rows}} baris, mulai dari offset {{.Offset}}. Batas per halaman: {{.Limit}}.</p>
+      <p class="text-muted small d-sm-none">Geser tabel untuk melihat kolom lainnya.</p>
+      <div class="table-responsive data-grid mb-4" role="region" aria-label="Data tabel" tabindex="0">
+        <table class="table align-middle text-nowrap">
+          <thead>
+            <tr>
+              {{range .Columns}}
+              <th scope="col">{{.}}</th>
+              {{end}}
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Rows}}
+            <tr>
+              {{range .}}
+              <td class="text-break">{{if eq . nil}}<span class="text-muted">NULL</span>{{else}}{{.}}{{end}}</td>
+              {{end}}
+            </tr>
+            {{else}}
+            <tr><td colspan="{{len .Columns}}" class="text-muted">Tidak ada data pada halaman ini.</td></tr>
+            {{end}}
+          </tbody>
+        </table>
       </div>
-    </section>
+      {{end}}
 
+
+      {{else}}
+      <h1 class="h3 mb-4">Schema dan struktur tabel</h1>
+      {{if .Schemas}}
+      <form class="row g-3 align-items-end mb-4" method="get" action="/databases/{{.Database.ID}}/schema">
+        <div class="col-sm-8">
+          <label class="form-label" for="schema">Schema</label>
+          <select class="form-select" id="schema" name="schema">
+            {{range .Schemas}}
+            <option value="{{.}}" {{if eq . $.Schema}}selected{{end}}>{{.}}</option>
+            {{end}}
+          </select>
+        </div>
+        <div class="col-sm-4">
+          <button class="btn btn-primary" type="submit">Pilih schema</button>
+        </div>
+      </form>
+
+      {{if .Tables}}
+      <form class="row g-3 align-items-end mb-4" method="get" action="/databases/{{.Database.ID}}/schema">
+        <input type="hidden" name="schema" value="{{.Schema}}" />
+        <div class="col-sm-8">
+          <label class="form-label" for="table">Tabel</label>
+          <select class="form-select" id="table" name="table">
+            {{range .Tables}}
+            <option value="{{.}}" {{if eq . $.Table}}selected{{end}}>{{.}}</option>
+            {{end}}
+          </select>
+        </div>
+        <div class="col-sm-4">
+          <button class="btn btn-primary" type="submit">Pilih tabel</button>
+        </div>
+      </form>
+      {{if .Table}}
+      <h2 class="h4 text-break mb-3">{{.Schema}}.{{.Table}}</h2>
+      {{if .DataURL}}
+      <a class="btn btn-primary mb-4" href="{{.DataURL}}">Lihat data</a>
+      {{end}}
+
+      <h3 class="h5 mb-3">Kolom</h3>
+      <div class="table-responsive mb-4" role="region" aria-label="Kolom tabel" tabindex="0">
+        <table class="table align-middle text-nowrap">
+          <thead><tr><th scope="col">Nama</th><th scope="col">Tipe PostgreSQL</th><th scope="col">Boleh NULL</th></tr></thead>
+          <tbody>
+            {{range .Columns}}
+            <tr><td>{{.Name}}</td><td>{{.DataType}}</td><td>{{if .Nullable}}Ya{{else}}Tidak{{end}}</td></tr>
+            {{else}}
+            <tr><td colspan="3" class="text-muted">Tidak ada kolom.</td></tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="h5 mb-3">Constraint</h3>
+      <div class="table-responsive mb-4" role="region" aria-label="Constraint tabel" tabindex="0">
+        <table class="table align-middle text-nowrap">
+          <thead><tr><th scope="col">Nama</th><th scope="col">Jenis</th><th scope="col">Definisi</th></tr></thead>
+          <tbody>
+            {{range .Constraints}}
+            <tr><td>{{.Name}}</td><td>{{.Type}}</td><td><pre class="mb-0">{{.Definition}}</pre></td></tr>
+            {{else}}
+            <tr><td colspan="3" class="text-muted">Tidak ada constraint.</td></tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="h5 mb-3">Index</h3>
+      <div class="table-responsive" role="region" aria-label="Index tabel" tabindex="0">
+        <table class="table align-middle text-nowrap">
+          <thead><tr><th scope="col">Nama</th><th scope="col">Definisi</th></tr></thead>
+          <tbody>
+            {{range .Indexes}}
+            <tr><td>{{.Name}}</td><td><pre class="mb-0">{{.Definition}}</pre></td></tr>
+            {{else}}
+            <tr><td colspan="2" class="text-muted">Tidak ada index.</td></tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      {{end}}
+      {{else}}
+      <p class="text-muted mb-0">Tidak ada tabel dalam schema ini.</p>
+      {{end}}
+      {{else}}
+      <p class="text-muted mb-0">Tidak ada schema yang dapat ditampilkan.</p>
+      {{end}}
+      {{end}}
+    </main>
     <script src="/static/login/mdb.min.js"></script>
   </body>
 </html>

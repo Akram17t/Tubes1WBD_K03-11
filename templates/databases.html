@@ -1,94 +1,58 @@
 <!doctype html>
 <html lang="id">
   <head>
-    <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, shrink-to-fit=no"
-    />
     <title>Database | DB Platform</title>
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap"
-    />
-    <link rel="stylesheet" href="/static/login/bootstrap-login-form.min.css" />
+    {{template "head"}}
   </head>
-  <body>
-    <section class="min-vh-100" style="background-color: #508bfc">
-      <div class="container py-5">
-        <div class="row d-flex justify-content-center">
-          <div class="col-12 col-lg-10 col-xl-8">
-            <div class="card shadow-2-strong" style="border-radius: 1rem">
-              <main class="card-body p-4 p-md-5">
-                <nav class="d-flex flex-wrap align-items-center gap-3 mb-4" aria-label="Navigasi utama">
-                  <a href="/databases">Daftar database</a>
-                  {{with .User}}
-                  {{if .IsPlatformAdmin}}
-                  <a href="/admin/users">User</a>
-                  <a href="/admin/groups">Group</a>
-                  <a href="/admin/databases">Koneksi database</a>
-                  {{end}}
-                  <span class="ms-auto">{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Username}}{{end}}</span>
-                  <form method="post" action="/logout">
-                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
-                    <button class="btn btn-light btn-sm" type="submit">Logout</button>
-                  </form>
-                  {{end}}
-                </nav>
-                {{if .Database}}
-                <nav class="mb-4" aria-label="Navigasi database">
-                  <a href="/databases">Daftar database</a>
-                </nav>
-                <h1 class="h3 text-break mb-2">{{.Database.Name}}</h1>
-                <p class="text-muted mb-4">Lihat struktur, data, dan riwayat perubahan database.</p>
-                <div class="d-flex flex-wrap gap-3">
-                  <a class="btn btn-primary" href="/databases/{{.Database.ID}}/schema">
-                    Lihat schema dan data
-                  </a>
-                  <a class="btn btn-light" href="/databases/{{.Database.ID}}/migrations">
-                    Migration
-                  </a>
-                </div>
-                {{else}}
-                <h1 class="h3 mb-2">Daftar database</h1>
-                <p class="text-muted mb-4">Database yang dapat Anda akses.</p>
-
-                {{if .Databases}}
-                <div class="table-responsive" role="region" aria-label="Daftar database" tabindex="0">
-                  <table class="table align-middle mb-0">
-                    <thead>
-                      <tr>
-                        <th scope="col">Nama database</th>
-                        <th scope="col">Aksi</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {{range .Databases}}
-                      <tr>
-                        <td class="text-break">{{.Name}}</td>
-                        <td>
-                          <a
-                            class="btn btn-primary btn-sm"
-                            href="/databases/{{.ID}}"
-                            aria-label="Buka database {{.Name}}"
-                          >Buka</a>
-                        </td>
-                      </tr>
-                      {{end}}
-                    </tbody>
-                  </table>
-                </div>
-                {{else}}
-                <p class="text-muted mb-0">Belum ada database yang dapat Anda akses.</p>
-                {{end}}
-                {{end}}
-              </main>
-            </div>
-          </div>
-        </div>
+  <body class="bg-light">
+    {{template "nav" .}}
+    <main class="container page">
+      {{if .Database}}
+      <h1 class="h3 text-break mb-2">{{.Database.Name}}</h1>
+      <p class="text-muted mb-4">Lihat struktur, data, dan riwayat perubahan database.</p>
+      <div class="d-flex flex-wrap gap-3">
+        <a class="btn btn-primary" href="/databases/{{.Database.ID}}/schema">
+          Lihat schema dan data
+        </a>
+        <a class="btn btn-light" href="/databases/{{.Database.ID}}/migrations">
+          Migration
+        </a>
       </div>
-    </section>
+      {{else}}
+      <h1 class="h3 mb-2">Daftar database</h1>
+      <p class="text-muted mb-4">Database yang dapat Anda akses.</p>
 
+      {{if .Databases}}
+      <div class="table-responsive" role="region" aria-label="Daftar database" tabindex="0">
+        <table class="table align-middle mb-0">
+          <thead>
+            <tr>
+              <th scope="col">Nama database</th>
+              <th scope="col">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Databases}}
+            <tr>
+              <td class="text-break">{{.Name}}</td>
+              <td>
+                <a
+                  class="btn btn-primary btn-sm"
+                  href="/databases/{{.ID}}"
+                  aria-label="Buka database {{.Name}}"
+                >Buka</a>
+              </td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      {{else}}
+      <p class="text-muted mb-0">Belum ada database yang dapat Anda akses.</p>
+      {{if .User.IsPlatformAdmin}}<p class="text-muted mt-2 mb-0">Akun admin tetap memerlukan akses melalui group untuk membuka viewer.</p>{{end}}
+      {{end}}
+      {{end}}
+    </main>
     <script src="/static/login/mdb.min.js"></script>
   </body>
 </html>

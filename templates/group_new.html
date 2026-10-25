@@ -6,7 +6,7 @@
 </head>
 <body class="bg-light">
 {{template "nav" .}}
-    <main class="container page">
+    <main class="container page page-narrow">
         <h1>Buat group</h1>
         {{if .Error}}<p role="alert">{{.Error}}</p>{{end}}
         <form method="post" action="/admin/groups">

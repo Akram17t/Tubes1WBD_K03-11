@@ -41,6 +41,17 @@ func (s databaseAccessService) page(ctx context.Context, user *auth.User, groupI
 		return page, err
 	}
 	page.Databases, err = repository.databases(ctx)
+	assigned := make(map[int64]bool, len(page.Grants))
+	for _, grant := range page.Grants {
+		assigned[grant.DatabaseID] = true
+	}
+	available := page.Databases[:0]
+	for _, database := range page.Databases {
+		if !assigned[database.ID] {
+			available = append(available, database)
+		}
+	}
+	page.Databases = available
 	return page, err
 }
 

@@ -4,8 +4,11 @@
 <body class="bg-light">
 {{template "nav" .}}
 <main class="container page">
-  <h1>Koneksi database</h1>
-  <nav><a href="/admin/databases/new">Tambah koneksi</a> · <a href="/admin/groups">Group</a> · <a href="/databases">Database viewer</a></nav>
+  <div class="page-heading">
+    <h1>Koneksi database</h1>
+    <a class="btn btn-primary" href="/admin/databases/new">Tambah koneksi</a>
+  </div>
+  <div class="table-responsive" role="region" aria-label="Koneksi database" tabindex="0">
   <table>
     <thead><tr><th>Nama</th><th>Host</th><th>Database</th><th>Status</th><th>Tindakan</th></tr></thead>
     <tbody>
@@ -16,13 +19,14 @@
         <a href="/admin/databases/{{.ID}}/edit">Edit</a>
         <form method="post" action="/admin/databases/{{.ID}}/{{if .IsActive}}deactivate{{else}}activate{{end}}">
           <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-          <button type="submit">{{if .IsActive}}Nonaktifkan{{else}}Aktifkan{{end}}</button>
+          <button class="btn btn-sm {{if .IsActive}}btn-outline-danger{{else}}btn-outline-success{{end}}" type="submit">{{if .IsActive}}Nonaktifkan{{else}}Aktifkan{{end}}</button>
         </form>
       </td>
     </tr>
     {{else}}<tr><td colspan="5">Belum ada koneksi database.</td></tr>{{end}}
     </tbody>
   </table>
+  </div>
 </main>
 </body>
 </html>
