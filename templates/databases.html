@@ -20,6 +20,21 @@
           <div class="col-12 col-lg-10 col-xl-8">
             <div class="card shadow-2-strong" style="border-radius: 1rem">
               <main class="card-body p-4 p-md-5">
+                {{if .Database}}
+                <nav class="mb-4" aria-label="Navigasi database">
+                  <a href="/databases">Daftar database</a>
+                </nav>
+                <h1 class="h3 text-break mb-2">{{.Database.Name}}</h1>
+                <p class="text-muted mb-4">Lihat struktur, data, dan riwayat perubahan database.</p>
+                <div class="d-flex flex-wrap gap-3">
+                  <a class="btn btn-primary" href="/databases/{{.Database.ID}}/schema">
+                    Lihat schema dan data
+                  </a>
+                  <a class="btn btn-light" href="/databases/{{.Database.ID}}/migrations">
+                    Migration
+                  </a>
+                </div>
+                {{else}}
                 <h1 class="h3 mb-2">Daftar database</h1>
                 <p class="text-muted mb-4">Database yang dapat Anda akses.</p>
 
@@ -50,6 +65,7 @@
                 </div>
                 {{else}}
                 <p class="text-muted mb-0">Belum ada database yang dapat Anda akses.</p>
+                {{end}}
                 {{end}}
               </main>
             </div>
