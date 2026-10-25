@@ -193,7 +193,7 @@ Platform Admin dapat melihat seluruh akun beserta peran dan statusnya, membuat u
 
 ![Edit user](screenshots/user-form.png)
 
-Admin dapat mengatur username, nama tampilan, password, dan status Platform Admin. Password disimpan sebagai hash bcrypt dan harus terdiri dari 8 sampai 72 karakter. Username yang sudah dipakai menghasilkan 409. Mengganti password atau mencabut status admin akan mencabut session user tersebut, sedangkan menjadikan user sebagai admin akan merotasi session-nya pada request berikutnya. Admin tidak dapat menonaktifkan akunnya sendiri atau mencabut status adminnya sendiri.
+Admin dapat mengatur username, nama tampilan, password, dan status Platform Admin. Password disimpan sebagai hash Argon2id dan harus terdiri dari 8 sampai 72 karakter. Username yang sudah dipakai menghasilkan 409. Mengganti password atau mencabut status admin akan mencabut session user tersebut, sedangkan menjadikan user sebagai admin akan merotasi session-nya pada request berikutnya. Admin tidak dapat menonaktifkan akunnya sendiri atau mencabut status adminnya sendiri.
 
 ### Daftar Group
 
@@ -273,7 +273,7 @@ Tanpa kedua variabel tersebut, integration test akan dilewati.
 - [html/template](https://pkg.go.dev/html/template) - Render halaman di sisi server
 - [PostgreSQL](https://www.postgresql.org/) - Database platform dan database target
 - [pgx](https://github.com/jackc/pgx) - Driver PostgreSQL
-- [bcrypt](https://pkg.go.dev/golang.org/x/crypto/bcrypt) - Hash password
+- [Argon2id](https://pkg.go.dev/golang.org/x/crypto/argon2) - Hash password
 - [MDB Bootstrap](https://mdbootstrap.com/) - Tampilan halaman
 
 ## Contributing

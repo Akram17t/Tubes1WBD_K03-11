@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 	testdb "tubes-wbd/test/database"
@@ -16,7 +17,6 @@ import (
 	"tubes-wbd/src/auth"
 
 	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
 )
 
 var csrfPattern = regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
@@ -144,8 +144,8 @@ func TestAdminCreatesUser(t *testing.T) {
 
 	var hash, displayName string
 	db.QueryRow(`SELECT password_hash, display_name FROM users WHERE username = 'budi'`).Scan(&hash, &displayName)
-	if bcrypt.CompareHashAndPassword([]byte(hash), []byte("password-budi")) != nil {
-		t.Error("password harus disimpan sebagai hash bcrypt")
+	if !strings.HasPrefix(hash, "$argon2id$") || !auth.CheckPassword(hash, "password-budi") {
+		t.Error("password harus disimpan sebagai hash Argon2id")
 	}
 	if displayName != "budi" {
 		t.Errorf("nama tampilan kosong harusnya diisi username, dapat %q", displayName)
