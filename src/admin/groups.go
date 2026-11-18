@@ -12,9 +12,11 @@ import (
 )
 
 type Group struct {
-	ID          int64
-	Name        string
-	Description string
+	ID           int64
+	Name         string
+	Description  string
+	LeaderUserID *int64
+	IsArchived   bool
 }
 
 type GroupMember struct {
@@ -38,6 +40,7 @@ var (
 	errGroupUserNotFound   = errors.New("User tidak ditemukan.")
 	errGroupMemberNotFound = errors.New("User bukan anggota group ini.")
 	errGroupMemberExists   = errors.New("User sudah menjadi anggota group ini.")
+	errInvalidGroupLeader  = errors.New("Leader harus anggota group dengan akun aktif.")
 )
 
 type groupActions interface {
@@ -48,6 +51,7 @@ type groupActions interface {
 	deleteGroup(context.Context, *auth.User, int64) error
 	addMember(context.Context, *auth.User, int64, int64) error
 	removeMember(context.Context, *auth.User, int64, int64) error
+	setLeader(context.Context, *auth.User, int64, *int64) error
 }
 
 // Handlers: map HTTP requests to the service and templates.
@@ -61,6 +65,7 @@ func registerGroupRoutes(router gin.IRouter, service groupActions) {
 	routes.POST("", handler.create)
 	routes.GET("/:groupID/edit", handler.edit)
 	routes.POST("/:groupID/update", handler.update)
+	routes.POST("/:groupID/leader", handler.setLeader)
 	routes.POST("/:groupID/delete", handler.deleteGroup)
 	routes.POST("/:groupID/members", handler.addMember)
 	routes.POST("/:groupID/members/:userID/remove", handler.removeMember)
@@ -140,6 +145,34 @@ func (h groupHandler) deleteGroup(c *gin.Context) {
 	c.Redirect(http.StatusSeeOther, "/admin/groups")
 }
 
+func (h groupHandler) setLeader(c *gin.Context) {
+	id, ok := groupIDParam(c, "groupID")
+	if !ok {
+		return
+	}
+	value, present := c.GetPostForm("leader_user_id")
+	if !present {
+		c.String(http.StatusBadRequest, "%s", errInvalidGroupID)
+		return
+	}
+	var leaderID *int64
+	if value != "" {
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || parsed <= 0 {
+			c.String(http.StatusBadRequest, "%s", errInvalidGroupID)
+			return
+		}
+		leaderID = &parsed
+	}
+	user, _ := auth.CurrentUser(c)
+	if err := h.service.setLeader(c.Request.Context(), user, id, leaderID); err != nil {
+		status, message := groupHTTPError(err)
+		c.String(status, "%s", message)
+		return
+	}
+	c.Redirect(http.StatusSeeOther, groupEditURL(id))
+}
+
 func (h groupHandler) addMember(c *gin.Context) {
 	id, ok := groupIDParam(c, "groupID")
 	if !ok {
@@ -190,11 +223,17 @@ func (h groupHandler) editForm(c *gin.Context, id int64, status int, message str
 		return
 	}
 	if submitted != nil {
+		submitted.LeaderUserID = data.Group.LeaderUserID
 		data.Group = *submitted
+	}
+	var leaderID int64
+	if data.Group.LeaderUserID != nil {
+		leaderID = *data.Group.LeaderUserID
 	}
 	c.HTML(status, "group_edit.html", gin.H{
 		"Group": data.Group, "Members": data.Members, "AvailableUsers": data.AvailableUsers,
-		"Error": message, "CSRFToken": auth.CSRFToken(c), "User": user,
+		"LeaderUserID": leaderID,
+		"Error":        message, "CSRFToken": auth.CSRFToken(c), "User": user,
 	})
 }
 
@@ -222,7 +261,7 @@ func groupHTTPError(err error) (int, string) {
 	switch {
 	case errors.Is(err, auth.ErrForbidden):
 		return http.StatusForbidden, "Akses ditolak."
-	case errors.Is(err, errInvalidGroupName), errors.Is(err, errInvalidGroupID):
+	case errors.Is(err, errInvalidGroupName), errors.Is(err, errInvalidGroupID), errors.Is(err, errInvalidGroupLeader):
 		return http.StatusBadRequest, err.Error()
 	case errors.Is(err, errGroupNameExists), errors.Is(err, errGroupMemberExists):
 		return http.StatusConflict, err.Error()

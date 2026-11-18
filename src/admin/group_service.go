@@ -91,14 +91,13 @@ func (s groupService) deleteGroup(ctx context.Context, user *auth.User, id int64
 		if err != nil {
 			return err
 		}
-		if err := repository.deleteGroup(ctx, id); err != nil {
+		if err := repository.archive(ctx, id); err != nil {
 			return err
 		}
 		ids := make([]int64, 0, len(members))
 		for _, member := range members {
 			ids = append(ids, member.ID)
 		}
-		// FK CASCADE removes memberships and access grants in this transaction.
 		return auth.RevokeSessions(ctx, tx, ids)
 	})
 }
@@ -150,6 +149,33 @@ func (s groupService) withGroupTransaction(ctx context.Context, groupID int64, o
 		return err
 	}
 	return tx.Commit()
+}
+
+func (s groupService) setLeader(ctx context.Context, user *auth.User, groupID int64, leaderID *int64) error {
+	if err := s.authorize(ctx, user); err != nil {
+		return err
+	}
+	if groupID <= 0 || (leaderID != nil && *leaderID <= 0) {
+		return errInvalidGroupID
+	}
+	return s.withGroupTransaction(ctx, groupID, func(repository groupRepository, tx *sql.Tx) error {
+		group, err := repository.find(ctx, groupID)
+		if err != nil {
+			return err
+		}
+		if err := repository.setLeader(ctx, groupID, leaderID); err != nil {
+			return err
+		}
+		if group.LeaderUserID != nil && (leaderID == nil || *group.LeaderUserID != *leaderID) {
+			if err := auth.RevokeSessions(ctx, tx, []int64{*group.LeaderUserID}); err != nil {
+				return err
+			}
+		}
+		if leaderID != nil && (group.LeaderUserID == nil || *group.LeaderUserID != *leaderID) {
+			return auth.BumpPrivilege(ctx, tx, []int64{*leaderID})
+		}
+		return nil
+	})
 }
 
 func groupInput(name, description string) (string, string, error) {

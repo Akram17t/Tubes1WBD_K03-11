@@ -245,6 +245,13 @@ func (h *userHandler) deactivate(c *gin.Context) {
 		return
 	}
 
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE groups SET leader_user_id = NULL, updated_at = now() WHERE leader_user_id = $1
+	`, userID); err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+
 	if err := auth.RevokeSessions(ctx, tx, []int64{userID}); err != nil {
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return

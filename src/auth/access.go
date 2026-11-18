@@ -60,6 +60,7 @@ func EffectiveLevel(ctx context.Context, db queryer, userID, dbID int64) (Level,
 	err := db.QueryRowContext(ctx, `
 		SELECT MAX(CASE gda.access_level WHEN 'edit' THEN 2 WHEN 'view' THEN 1 END)
 		FROM user_groups ug
+		JOIN groups g ON g.id = ug.group_id AND NOT g.is_archived
 		JOIN group_database_access gda ON gda.group_id = ug.group_id
 		JOIN database_connections dc ON dc.id = gda.database_id
 		WHERE ug.user_id = $1 AND gda.database_id = $2 AND dc.is_active
@@ -84,6 +85,7 @@ func AccessibleDatabaseIDs(ctx context.Context, db *sql.DB, user *User) ([]int64
 		SELECT dc.id FROM database_connections dc
 		WHERE dc.is_active AND EXISTS (
 			SELECT 1 FROM user_groups ug
+			JOIN groups g ON g.id = ug.group_id AND NOT g.is_archived
 			JOIN group_database_access gda ON gda.group_id = ug.group_id
 			WHERE ug.user_id = $1 AND gda.database_id = dc.id
 			  AND gda.access_level IN ('view', 'edit')

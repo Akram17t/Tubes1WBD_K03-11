@@ -24,6 +24,20 @@
             <button type="submit">Simpan perubahan</button>
         </form>
 
+        <h2>Leader group</h2>
+        <p id="leader-help">Leader harus anggota dengan akun aktif. Group boleh belum memiliki leader.</p>
+        <form method="post" action="/admin/groups/{{.Group.ID}}/leader">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <label for="leader_user_id">Leader</label>
+            <select id="leader_user_id" name="leader_user_id" aria-describedby="leader-help">
+                <option value="">Tanpa leader</option>
+                {{range .Members}}{{if .IsActive}}
+                <option value="{{.ID}}"{{if eq .ID $.LeaderUserID}} selected{{end}}>{{.Username}} — {{.DisplayName}}</option>
+                {{end}}{{end}}
+            </select>
+            <button type="submit">Simpan leader</button>
+        </form>
+
         <h2>Anggota group</h2>
         {{if .Members}}
         <div class="table-responsive" role="region" aria-label="Anggota group" tabindex="0">
@@ -67,12 +81,12 @@
         <p>Tidak ada user lain yang dapat ditambahkan.</p>
         {{end}}
 
-        <section class="danger-zone" aria-label="Hapus group">
-        <h2>Hapus group</h2>
-        <p>Penghapusan juga menghapus keanggotaan dan akses database milik group. Seluruh session anggota akan dicabut.</p>
+        <section class="danger-zone" aria-label="Arsipkan group">
+        <h2>Arsipkan group</h2>
+        <p>Pengarsipan mencabut keanggotaan, akses database, dan seluruh session anggota. Record group tetap disimpan untuk referensi riwayat.</p>
         <form method="post" action="/admin/groups/{{.Group.ID}}/delete">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-            <button class="btn btn-outline-danger" type="submit">Hapus group</button>
+            <button class="btn btn-outline-danger" type="submit">Arsipkan group</button>
         </form>
         </section>
     </main>

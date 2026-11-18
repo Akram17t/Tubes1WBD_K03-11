@@ -18,7 +18,8 @@ type groupRepository struct{ db groupDB }
 
 func (r groupRepository) list(ctx context.Context) ([]Group, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, COALESCE(description, '') FROM groups ORDER BY name, id`)
+		SELECT id, name, COALESCE(description, ''), leader_user_id, is_archived
+		FROM groups WHERE NOT is_archived ORDER BY name, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -26,7 +27,7 @@ func (r groupRepository) list(ctx context.Context) ([]Group, error) {
 	groups := make([]Group, 0)
 	for rows.Next() {
 		var group Group
-		if err := rows.Scan(&group.ID, &group.Name, &group.Description); err != nil {
+		if err := rows.Scan(&group.ID, &group.Name, &group.Description, &group.LeaderUserID, &group.IsArchived); err != nil {
 			return nil, err
 		}
 		groups = append(groups, group)
@@ -37,8 +38,9 @@ func (r groupRepository) list(ctx context.Context) ([]Group, error) {
 func (r groupRepository) find(ctx context.Context, id int64) (Group, error) {
 	var group Group
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, name, COALESCE(description, '') FROM groups WHERE id = $1`, id).
-		Scan(&group.ID, &group.Name, &group.Description)
+		SELECT id, name, COALESCE(description, ''), leader_user_id, is_archived
+		FROM groups WHERE id = $1 AND NOT is_archived`, id).
+		Scan(&group.ID, &group.Name, &group.Description, &group.LeaderUserID, &group.IsArchived)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = errGroupNotFound
 	}
@@ -54,7 +56,7 @@ func (r groupRepository) create(ctx context.Context, name, description string) e
 func (r groupRepository) update(ctx context.Context, id int64, name, description string) error {
 	result, err := r.db.ExecContext(ctx, `
 		UPDATE groups SET name = $1, description = NULLIF($2, ''), updated_at = now()
-		WHERE id = $3`, name, description, id)
+		WHERE id = $3 AND NOT is_archived`, name, description, id)
 	return groupWriteResult(result, err, errGroupNotFound)
 }
 
@@ -91,7 +93,7 @@ func (r groupRepository) users(ctx context.Context, query string, id int64) ([]G
 
 // Lock the parent before every membership change or group deletion.
 func (r groupRepository) lock(ctx context.Context, id int64) error {
-	err := r.db.QueryRowContext(ctx, `SELECT id FROM groups WHERE id = $1 FOR UPDATE`, id).Scan(&id)
+	err := r.db.QueryRowContext(ctx, `SELECT id FROM groups WHERE id = $1 AND NOT is_archived FOR UPDATE`, id).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return errGroupNotFound
 	}
@@ -106,8 +108,37 @@ func (r groupRepository) lockUser(ctx context.Context, id int64) error {
 	return err
 }
 
-func (r groupRepository) deleteGroup(ctx context.Context, id int64) error {
-	result, err := r.db.ExecContext(ctx, `DELETE FROM groups WHERE id = $1`, id)
+func (r groupRepository) archive(ctx context.Context, id int64) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE groups SET is_archived = true, leader_user_id = NULL, updated_at = now()
+		WHERE id = $1 AND NOT is_archived`, id)
+	if err := groupWriteResult(result, err, errGroupNotFound); err != nil {
+		return err
+	}
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM user_groups WHERE group_id = $1`, id); err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx, `DELETE FROM group_database_access WHERE group_id = $1`, id)
+	return err
+}
+
+func (r groupRepository) setLeader(ctx context.Context, groupID int64, leaderID *int64) error {
+	if leaderID != nil {
+		var active bool
+		err := r.db.QueryRowContext(ctx, `
+			SELECT u.is_active FROM users u
+			JOIN user_groups ug ON ug.user_id = u.id
+			WHERE ug.group_id = $1 AND u.id = $2 FOR UPDATE OF u`, groupID, *leaderID).Scan(&active)
+		if errors.Is(err, sql.ErrNoRows) || (err == nil && !active) {
+			return errInvalidGroupLeader
+		}
+		if err != nil {
+			return err
+		}
+	}
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE groups SET leader_user_id = $2, updated_at = now()
+		WHERE id = $1 AND NOT is_archived`, groupID, leaderID)
 	return groupWriteResult(result, err, errGroupNotFound)
 }
 
