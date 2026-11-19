@@ -16,6 +16,7 @@ type groupDB interface {
 
 type groupRepository struct{ db groupDB }
 
+// list mengambil group yang belum diarsipkan beserta leader-nya.
 func (r groupRepository) list(ctx context.Context) ([]Group, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, name, COALESCE(description, ''), leader_user_id, is_archived
@@ -35,6 +36,7 @@ func (r groupRepository) list(ctx context.Context) ([]Group, error) {
 	return groups, rows.Err()
 }
 
+// find mencari satu group aktif atau mengembalikan error tidak ditemukan.
 func (r groupRepository) find(ctx context.Context, id int64) (Group, error) {
 	var group Group
 	err := r.db.QueryRowContext(ctx, `
@@ -47,12 +49,14 @@ func (r groupRepository) find(ctx context.Context, id int64) (Group, error) {
 	return group, err
 }
 
+// create menyimpan group baru dengan deskripsi opsional.
 func (r groupRepository) create(ctx context.Context, name, description string) error {
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO groups (name, description) VALUES ($1, NULLIF($2, ''))`, name, description)
 	return groupDatabaseError(err)
 }
 
+// update mengganti nama dan deskripsi group yang belum diarsipkan.
 func (r groupRepository) update(ctx context.Context, id int64, name, description string) error {
 	result, err := r.db.ExecContext(ctx, `
 		UPDATE groups SET name = $1, description = NULLIF($2, ''), updated_at = now()
@@ -60,6 +64,7 @@ func (r groupRepository) update(ctx context.Context, id int64, name, description
 	return groupWriteResult(result, err, errGroupNotFound)
 }
 
+// members mengambil anggota group beserta status akun mereka.
 func (r groupRepository) members(ctx context.Context, id int64) ([]GroupMember, error) {
 	return r.users(ctx, `
 		SELECT u.id, u.username, u.display_name, u.is_active
@@ -67,6 +72,7 @@ func (r groupRepository) members(ctx context.Context, id int64) ([]GroupMember, 
 		WHERE ug.group_id = $1 ORDER BY u.username, u.id`, id)
 }
 
+// availableUsers mengambil user yang belum menjadi anggota group.
 func (r groupRepository) availableUsers(ctx context.Context, id int64) ([]GroupMember, error) {
 	return r.users(ctx, `
 		SELECT u.id, u.username, u.display_name, u.is_active FROM users u
@@ -74,6 +80,7 @@ func (r groupRepository) availableUsers(ctx context.Context, id int64) ([]GroupM
 		ORDER BY u.username, u.id`, id)
 }
 
+// users membaca hasil query anggota atau calon anggota ke bentuk GroupMember.
 func (r groupRepository) users(ctx context.Context, query string, id int64) ([]GroupMember, error) {
 	rows, err := r.db.QueryContext(ctx, query, id)
 	if err != nil {
@@ -91,7 +98,7 @@ func (r groupRepository) users(ctx context.Context, query string, id int64) ([]G
 	return users, rows.Err()
 }
 
-// Lock the parent before every membership change or group deletion.
+// lock mengunci group aktif sebelum perubahan anggota, leader, atau pengarsipan.
 func (r groupRepository) lock(ctx context.Context, id int64) error {
 	err := r.db.QueryRowContext(ctx, `SELECT id FROM groups WHERE id = $1 AND NOT is_archived FOR UPDATE`, id).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -100,6 +107,7 @@ func (r groupRepository) lock(ctx context.Context, id int64) error {
 	return err
 }
 
+// lockUser mengunci akun agar perubahan keanggotaan tidak berbenturan dengan perubahan user.
 func (r groupRepository) lockUser(ctx context.Context, id int64) error {
 	err := r.db.QueryRowContext(ctx, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, id).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -108,6 +116,7 @@ func (r groupRepository) lockUser(ctx context.Context, id int64) error {
 	return err
 }
 
+// archive menyimpan record group sambil mengosongkan leader, anggota, dan grant aksesnya.
 func (r groupRepository) archive(ctx context.Context, id int64) error {
 	result, err := r.db.ExecContext(ctx, `
 		UPDATE groups SET is_archived = true, leader_user_id = NULL, updated_at = now()
@@ -122,6 +131,7 @@ func (r groupRepository) archive(ctx context.Context, id int64) error {
 	return err
 }
 
+// setLeader menetapkan anggota aktif sebagai leader atau mengosongkannya jika nil.
 func (r groupRepository) setLeader(ctx context.Context, groupID int64, leaderID *int64) error {
 	if leaderID != nil {
 		var active bool
@@ -142,16 +152,19 @@ func (r groupRepository) setLeader(ctx context.Context, groupID int64, leaderID 
 	return groupWriteResult(result, err, errGroupNotFound)
 }
 
+// addMember menambahkan relasi keanggotaan dan menolak anggota duplikat.
 func (r groupRepository) addMember(ctx context.Context, groupID, userID int64) error {
 	_, err := r.db.ExecContext(ctx, `INSERT INTO user_groups (group_id, user_id) VALUES ($1, $2)`, groupID, userID)
 	return groupDatabaseError(err)
 }
 
+// removeMember menghapus keanggotaan dan foreign key ikut mengosongkan leader bila diperlukan.
 func (r groupRepository) removeMember(ctx context.Context, groupID, userID int64) error {
 	result, err := r.db.ExecContext(ctx, `DELETE FROM user_groups WHERE group_id = $1 AND user_id = $2`, groupID, userID)
 	return groupWriteResult(result, err, errGroupMemberNotFound)
 }
 
+// groupWriteResult membedakan kegagalan query dari target perubahan yang tidak ditemukan.
 func groupWriteResult(result sql.Result, err error, missing error) error {
 	if err != nil {
 		return groupDatabaseError(err)
@@ -163,6 +176,7 @@ func groupWriteResult(result sql.Result, err error, missing error) error {
 	return err
 }
 
+// groupDatabaseError menerjemahkan pelanggaran constraint yang dikenal menjadi error group.
 func groupDatabaseError(err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {

@@ -184,6 +184,7 @@ func (h *userHandler) update(c *gin.Context) {
 		return
 	}
 
+	// Password hanya diganti ketika admin mengisi nilai baru.
 	passwordChanged := form.Password != ""
 	if passwordChanged {
 		hash, err := auth.HashPassword(form.Password)
@@ -197,6 +198,7 @@ func (h *userHandler) update(c *gin.Context) {
 		}
 	}
 
+	// Penurunan hak langsung mencabut session, sedangkan penambahan hak memicu rotasi.
 	ids := []int64{userID}
 	if passwordChanged || (wasAdmin && !form.IsPlatformAdmin) {
 		err = auth.RevokeSessions(ctx, tx, ids)
@@ -215,7 +217,7 @@ func (h *userHandler) update(c *gin.Context) {
 	c.Redirect(http.StatusSeeOther, "/admin/users")
 }
 
-// nonaktifin akun dan cabut semua session-nya
+// nonaktifin akun, kosongkan jabatan leader-nya, dan cabut semua session dalam satu transaction.
 func (h *userHandler) deactivate(c *gin.Context) {
 	userID, ok := userIDParam(c)
 	if !ok {
@@ -245,6 +247,7 @@ func (h *userHandler) deactivate(c *gin.Context) {
 		return
 	}
 
+	// Jabatan leader ikut dicabut sebelum deaktivasi dan pencabutan session di-commit.
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE groups SET leader_user_id = NULL, updated_at = now() WHERE leader_user_id = $1
 	`, userID); err != nil {
