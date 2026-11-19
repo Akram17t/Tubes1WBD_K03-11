@@ -11,7 +11,7 @@ import (
 
 type groupStore interface {
 	list(context.Context) ([]Group, error)
-	create(context.Context, string, string) error
+	create(context.Context, string, string) (Group, error)
 	find(context.Context, int64) (Group, error)
 	update(context.Context, int64, string, string) error
 	members(context.Context, int64) ([]GroupMember, error)
@@ -37,13 +37,13 @@ func (s groupService) list(ctx context.Context, user *auth.User) ([]Group, error
 }
 
 // create memvalidasi input admin sebelum menyimpan group baru.
-func (s groupService) create(ctx context.Context, user *auth.User, name, description string) error {
+func (s groupService) create(ctx context.Context, user *auth.User, name, description string) (Group, error) {
 	if err := s.authorize(ctx, user); err != nil {
-		return err
+		return Group{}, err
 	}
 	name, description, err := groupInput(name, description)
 	if err != nil {
-		return err
+		return Group{}, err
 	}
 	return s.store.create(ctx, name, description)
 }
@@ -174,20 +174,25 @@ func (s groupService) setLeader(ctx context.Context, user *auth.User, groupID in
 		if err != nil {
 			return err
 		}
-		if err := repository.setLeader(ctx, groupID, leaderID); err != nil {
+		return changeGroupLeader(ctx, repository, tx, group, leaderID)
+	})
+}
+
+// changeGroupLeader menerapkan perubahan leader dan session dalam transaction caller yang memegang lock group.
+func changeGroupLeader(ctx context.Context, repository groupRepository, tx *sql.Tx, group Group, leaderID *int64) error {
+	if err := repository.setLeader(ctx, group.ID, leaderID); err != nil {
+		return err
+	}
+	// Perubahan leader dan dampaknya pada session harus tersimpan secara atomic.
+	if group.LeaderUserID != nil && (leaderID == nil || *group.LeaderUserID != *leaderID) {
+		if err := auth.RevokeSessions(ctx, tx, []int64{*group.LeaderUserID}); err != nil {
 			return err
 		}
-		// Perubahan leader dan dampaknya pada session harus tersimpan secara atomic.
-		if group.LeaderUserID != nil && (leaderID == nil || *group.LeaderUserID != *leaderID) {
-			if err := auth.RevokeSessions(ctx, tx, []int64{*group.LeaderUserID}); err != nil {
-				return err
-			}
-		}
-		if leaderID != nil && (group.LeaderUserID == nil || *group.LeaderUserID != *leaderID) {
-			return auth.BumpPrivilege(ctx, tx, []int64{*leaderID})
-		}
-		return nil
-	})
+	}
+	if leaderID != nil && (group.LeaderUserID == nil || *group.LeaderUserID != *leaderID) {
+		return auth.BumpPrivilege(ctx, tx, []int64{*leaderID})
+	}
+	return nil
 }
 
 // groupInput merapikan teks dan memvalidasi panjang serta encoding nama group.

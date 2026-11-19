@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/url"
 
+	"tubes-wbd/src/httpapi"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -81,7 +83,7 @@ func sameOrigin(r *http.Request) bool {
 	return sourceURL.Host == r.Host
 }
 
-// middleware yang nolak POST tanpa token CSRF yang valid, pasang setelah Session. POST /login dicek lewat Origin karena belum punya session.
+// CSRF memvalidasi header API atau token form setelah Session dan melindungi login lewat Origin.
 func CSRF() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		method := c.Request.Method
@@ -105,7 +107,18 @@ func CSRF() gin.HandlerFunc {
 			return
 		}
 
-		if !validCSRFToken(session.CSRFSecret, c.PostForm(csrfFieldName)) {
+		// API hanya menerima header agar body JSON tidak dibaca sebagai form.
+		var token string
+		if httpapi.IsRequest(c) {
+			token = c.GetHeader("X-CSRF-Token")
+		} else {
+			token = c.PostForm(csrfFieldName)
+		}
+		if !validCSRFToken(session.CSRFSecret, token) {
+			if httpapi.IsRequest(c) {
+				httpapi.Abort(c, http.StatusForbidden, "csrf_invalid", "Token CSRF tidak valid.")
+				return
+			}
 			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}

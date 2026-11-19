@@ -13,6 +13,7 @@ import (
 
 type databaseAccessHandler struct{ service databaseAccessService }
 
+// registerDatabaseAccessRoutes memasang route form pengelolaan grant M1.
 func registerDatabaseAccessRoutes(router gin.IRouter, db *sql.DB) {
 	routes := router.Group("/admin/groups/:groupID/database-access",
 		auth.RequireLogin(), auth.RequireAdmin(), parseDatabaseAccessForm, auth.CSRF())
@@ -22,6 +23,7 @@ func registerDatabaseAccessRoutes(router gin.IRouter, db *sql.DB) {
 	routes.POST("/:dbID/revoke", handler.revoke)
 }
 
+// parseDatabaseAccessForm menolak body form yang gagal dibaca sebelum service dipanggil.
 func parseDatabaseAccessForm(c *gin.Context) {
 	if c.Request.Method == http.MethodPost {
 		if err := c.Request.ParseForm(); err != nil {
@@ -32,12 +34,14 @@ func parseDatabaseAccessForm(c *gin.Context) {
 	c.Next()
 }
 
+// show menampilkan grant dan pilihan database milik group pada URL.
 func (h databaseAccessHandler) show(c *gin.Context) {
 	if groupID, ok := groupIDParam(c, "groupID"); ok {
 		h.render(c, groupID, http.StatusOK, "", 0, "view")
 	}
 }
 
+// save membaca grant dari form dan menampilkan kembali kesalahan validasinya.
 func (h databaseAccessHandler) save(c *gin.Context) {
 	groupID, ok := groupIDParam(c, "groupID")
 	if !ok {
@@ -50,7 +54,7 @@ func (h databaseAccessHandler) save(c *gin.Context) {
 	}
 	level := c.PostForm("access_level")
 	user, _ := auth.CurrentUser(c)
-	if err := h.service.save(c.Request.Context(), user, groupID, databaseID, level); err != nil {
+	if _, err := h.service.save(c.Request.Context(), user, groupID, databaseID, level); err != nil {
 		status, message := databaseAccessHTTPError(err)
 		if status == http.StatusBadRequest || status == http.StatusConflict {
 			h.render(c, groupID, status, message, databaseID, level)
@@ -62,6 +66,7 @@ func (h databaseAccessHandler) save(c *gin.Context) {
 	c.Redirect(http.StatusSeeOther, databaseAccessURL(groupID))
 }
 
+// revoke mencabut grant yang dituju sebelum kembali ke halaman pengelolaan akses.
 func (h databaseAccessHandler) revoke(c *gin.Context) {
 	groupID, ok := groupIDParam(c, "groupID")
 	if !ok {
@@ -81,6 +86,7 @@ func (h databaseAccessHandler) revoke(c *gin.Context) {
 	c.Redirect(http.StatusSeeOther, databaseAccessURL(groupID))
 }
 
+// render menyiapkan data form grant dengan pilihan sebelumnya dan token CSRF terkini.
 func (h databaseAccessHandler) render(c *gin.Context, groupID int64, status int, message string, selectedID int64, selectedLevel string) {
 	user, _ := auth.CurrentUser(c)
 	page, err := h.service.page(c.Request.Context(), user, groupID)
@@ -96,10 +102,12 @@ func (h databaseAccessHandler) render(c *gin.Context, groupID int64, status int,
 	})
 }
 
+// databaseAccessURL menyusun alamat pengelolaan grant satu group.
 func databaseAccessURL(groupID int64) string {
 	return "/admin/groups/" + strconv.FormatInt(groupID, 10) + "/database-access"
 }
 
+// databaseAccessHTTPError memetakan error grant menjadi status HTTP dan pesan yang aman.
 func databaseAccessHTTPError(err error) (int, string) {
 	switch {
 	case errors.Is(err, errInvalidDatabaseID), errors.Is(err, errInvalidAccessLevel):

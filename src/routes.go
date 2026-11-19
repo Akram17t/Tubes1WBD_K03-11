@@ -15,6 +15,7 @@ import (
 	"tubes-wbd/src/admin"
 	"tubes-wbd/src/auth"
 	"tubes-wbd/src/database"
+	"tubes-wbd/src/httpapi"
 	"tubes-wbd/src/migration"
 
 	"github.com/gin-gonic/gin"
@@ -27,6 +28,7 @@ type Dependencies struct {
 	TargetConnections *database.ConnectionService
 }
 
+// newRouter memasang route dan middleware bersama untuk halaman M1 serta API JSON.
 func newRouter(deps Dependencies) (*gin.Engine, error) {
 	if deps.PlatformDB == nil {
 		return nil, errors.New("platform database is required")
@@ -60,6 +62,10 @@ func newRouter(deps Dependencies) (*gin.Engine, error) {
 				path = "<unmatched>"
 			}
 			log.Printf("recovered panic: %s %s", c.Request.Method, path)
+			if httpapi.IsRequest(c) {
+				httpapi.Abort(c, http.StatusInternalServerError, "internal_error", "Terjadi kesalahan internal.")
+				return
+			}
 			c.AbortWithStatus(http.StatusInternalServerError)
 		}),
 		requestLogger(),
@@ -78,9 +84,17 @@ func newRouter(deps Dependencies) (*gin.Engine, error) {
 	database.RegisterAdminRoutes(router, deps.TargetConnections)
 	migration.RegisterRoutes(router, deps.PlatformDB, deps.TargetDB)
 	admin.RegisterRoutes(router, deps.PlatformDB)
+	router.NoRoute(func(c *gin.Context) {
+		if httpapi.IsRequest(c) {
+			httpapi.Abort(c, http.StatusNotFound, "not_found", "Endpoint tidak ditemukan.")
+			return
+		}
+		c.String(http.StatusNotFound, "404 page not found")
+	})
 	return router, nil
 }
 
+// requestLogger mencatat method, route, status, dan durasi tanpa body atau credential request.
 func requestLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		started := time.Now()

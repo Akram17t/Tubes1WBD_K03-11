@@ -45,7 +45,7 @@ var (
 
 type groupActions interface {
 	list(context.Context, *auth.User) ([]Group, error)
-	create(context.Context, *auth.User, string, string) error
+	create(context.Context, *auth.User, string, string) (Group, error)
 	edit(context.Context, *auth.User, int64) (groupEditData, error)
 	update(context.Context, *auth.User, int64, string, string) error
 	deleteGroup(context.Context, *auth.User, int64) error
@@ -96,7 +96,7 @@ func (h groupHandler) create(c *gin.Context) {
 		Description: c.Request.PostForm.Get("description"),
 	}
 	user, _ := auth.CurrentUser(c)
-	err := h.service.create(c.Request.Context(), user, group.Name, group.Description)
+	_, err := h.service.create(c.Request.Context(), user, group.Name, group.Description)
 	if err != nil {
 		status, message := groupHTTPError(err)
 		if status == http.StatusBadRequest || status == http.StatusConflict {
