@@ -97,9 +97,12 @@ func (s WorkflowService) Get(ctx context.Context, user *auth.User, databaseID, r
 	if s.FindJob == nil {
 		return nil, ErrWorkflowUnavailable
 	}
-	detail.JobID, err = s.FindJob(ctx, tx, requestID)
+	job, err := s.FindJob(ctx, tx, requestID)
 	if err != nil {
 		return nil, err
+	}
+	if job != nil {
+		detail.JobID = &job.ID
 	}
 	level, err := auth.EffectiveLevel(ctx, tx, user.ID, databaseID)
 	if err != nil {
@@ -108,6 +111,10 @@ func (s WorkflowService) Get(ctx context.Context, user *auth.User, databaseID, r
 	// Aksi tampilan diturunkan dari izin terkini dan tetap diperiksa ulang saat mutasi.
 	if detail.CanApprove {
 		detail.AllowedActions = append(detail.AllowedActions, "approve")
+	}
+	if request.ReviewStatus == "approved" && len(detail.Approvals) > 0 && len(detail.PendingGroupIDs) == 0 &&
+		level == auth.LevelEdit && detail.JobID == nil && s.Validate != nil && s.Enqueue != nil {
+		detail.AllowedActions = append(detail.AllowedActions, "execute")
 	}
 	if request.RequestedBy == user.ID && level == auth.LevelEdit && detail.JobID == nil && request.ReviewStatus != "cancelled" {
 		detail.AllowedActions = append(detail.AllowedActions, "cancel")

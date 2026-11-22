@@ -23,6 +23,8 @@ type Dependencies struct {
 	PlatformDB        *sql.DB
 	TargetDB          database.TargetProvider
 	TargetConnections *database.ConnectionService
+	// Validator dan queue diisi saat mesin eksekusi M2 sudah tersedia.
+	MigrationWorkflow migration.WorkflowService
 }
 
 func newRouter(deps Dependencies) (*gin.Engine, error) {
@@ -73,6 +75,11 @@ func newRouter(deps Dependencies) (*gin.Engine, error) {
 	database.RegisterRoutes(router, deps.PlatformDB, deps.TargetDB)
 	database.RegisterAdminRoutes(router, deps.TargetConnections)
 	migration.RegisterRoutes(router, deps.PlatformDB, deps.TargetDB)
+	workflow := deps.MigrationWorkflow
+	workflow.DB = deps.PlatformDB
+	if err := migration.RegisterWorkflowRoutes(router, workflow, auth.CSRF()); err != nil {
+		return nil, fmt.Errorf("register migration workflow: %w", err)
+	}
 	admin.RegisterRoutes(router, deps.PlatformDB)
 	return router, nil
 }

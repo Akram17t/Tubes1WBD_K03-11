@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 
+	"tubes-wbd/src/telemetry"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,7 +25,10 @@ func IsRequest(c *gin.Context) bool {
 
 // Meta menggunakan correlation ID middleware atau membuatnya bila belum tersedia.
 func Meta(c *gin.Context) gin.H {
-	id := c.GetString("request_id")
+	id := telemetry.RequestID(c.Request.Context())
+	if id == "" {
+		id = c.GetString("request_id")
+	}
 	if id == "" {
 		id = "http-" + rand.Text()
 		c.Set("request_id", id)

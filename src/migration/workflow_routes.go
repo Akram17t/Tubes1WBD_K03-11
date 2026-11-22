@@ -1,6 +1,7 @@
 package migration
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -8,31 +9,26 @@ import (
 	"net/http"
 	"strconv"
 
+	"tubes-wbd/src/api"
 	"tubes-wbd/src/auth"
 
 	"github.com/gin-gonic/gin"
 )
 
-// RegisterWorkflowRoutes memasang API workflow setelah Reinsen menyiapkan session, CSRF JSON, dan request_id.
-// Route ini belum dipasang pada router M1 selama dependensi integrasinya belum tersedia.
+// RegisterWorkflowRoutes dipanggil setelah middleware Session terpasang.
 func RegisterWorkflowRoutes(router gin.IRouter, service WorkflowService, csrf gin.HandlerFunc) error {
 	if service.DB == nil || csrf == nil {
 		return ErrInvalidInput
 	}
 	h := workflowHandler{service: service}
-	routes := router.Group("/api/databases/:database_id/requests", func(c *gin.Context) {
-		if _, ok := auth.CurrentUser(c); !ok {
-			workflowError(c, http.StatusUnauthorized, "unauthenticated", "Silakan login terlebih dahulu.")
-			return
-		}
-		c.Next()
-	}, csrf)
+	routes := router.Group("/api/databases/:database_id/requests", auth.RequireLogin(), csrf)
 	routes.GET("", h.list)
 	routes.POST("", h.create)
 	routes.GET("/:request_id", h.get)
 	for _, action := range []string{"submit", "approve", "cancel"} {
 		routes.POST("/:request_id/"+action, h.action(action))
 	}
+	routes.POST("/:request_id/execute", h.execute)
 	return nil
 }
 
@@ -58,19 +54,21 @@ func workflowIDs(c *gin.Context) (int64, int64, bool) {
 
 // workflowDecode membatasi ukuran JSON dan menolak field asing atau lebih dari satu payload.
 func workflowDecode(c *gin.Context, target any, allowEmpty bool) error {
-	if c.Request.ContentLength != 0 {
-		contentType, _, err := mime.ParseMediaType(c.GetHeader("Content-Type"))
-		if err != nil || contentType != "application/json" {
-			return ErrInvalidInput
-		}
+	encoded, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20))
+	if err != nil {
+		return ErrInvalidInput
 	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
-	decoder := json.NewDecoder(c.Request.Body)
+	encoded = bytes.TrimSpace(encoded)
+	if allowEmpty && len(encoded) == 0 {
+		return nil
+	}
+	contentType, _, err := mime.ParseMediaType(c.GetHeader("Content-Type"))
+	if err != nil || contentType != "application/json" || len(encoded) == 0 || encoded[0] != '{' {
+		return ErrInvalidInput
+	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		if allowEmpty && errors.Is(err, io.EOF) {
-			return nil
-		}
 		return ErrInvalidInput
 	}
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
@@ -124,9 +122,22 @@ func (h workflowHandler) list(c *gin.Context) {
 		workflowRespondError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": requests, "meta": gin.H{
-		"request_id": c.GetString("request_id"), "limit": limit, "offset": offset, "has_more": hasMore,
-	}})
+	api.List(c, requests, api.Page{Limit: limit, Offset: offset}, hasMore)
+}
+
+// execute menerima referensi URL saja; SQL dan konfigurasi berasal dari snapshot approved.
+func (h workflowHandler) execute(c *gin.Context) {
+	databaseID, requestID, ok := workflowIDs(c)
+	if !ok {
+		return
+	}
+	if err := workflowDecode(c, new(struct{}), true); err != nil {
+		workflowRespondError(c, err)
+		return
+	}
+	user, _ := auth.CurrentUser(c)
+	job, err := h.service.Execute(c.Request.Context(), user, databaseID, requestID)
+	workflowRespond(c, http.StatusAccepted, job, err)
 }
 
 // action menjalankan submit, approve, atau cancel dengan body kosong tanpa SQL tambahan.
@@ -161,14 +172,12 @@ func workflowRespond(c *gin.Context, status int, data any, err error) {
 		workflowRespondError(c, err)
 		return
 	}
-	c.JSON(status, gin.H{"data": data, "meta": gin.H{"request_id": c.GetString("request_id")}})
+	api.JSON(c, status, data)
 }
 
 // workflowError menghentikan request dengan format error JSON yang konsisten.
 func workflowError(c *gin.Context, status int, code, message string) {
-	c.AbortWithStatusJSON(status, gin.H{
-		"error": gin.H{"code": code, "message": message}, "meta": gin.H{"request_id": c.GetString("request_id")},
-	})
+	api.Fail(c, status, code, message, nil)
 }
 
 // workflowRespondError memetakan error workflow tanpa membocorkan pesan SQL atau koneksi.

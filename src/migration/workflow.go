@@ -77,16 +77,21 @@ type ApprovalResult struct {
 	ApprovedGroupIDs []string `json:"approved_group_ids"`
 }
 
-// Manuel loads the stored definition and validates SQL/operation without executing user SQL.
+// RequestValidator membaca definisi tersimpan dan memvalidasi SQL/operasi tanpa mengeksekusinya.
 type RequestValidator func(context.Context, *sql.Tx, int64, RequestInput) (DefinitionSnapshot, error)
 
-// The queue owner reads the existing job in the caller's transaction without committing it.
-type RequestJobLookup func(context.Context, *sql.Tx, int64) (*int64, error)
+// Baca job dalam transaction caller tanpa melakukan commit.
+type RequestJobLookup func(context.Context, *sql.Tx, int64) (*Job, error)
+
+// RequestEnqueuer menyimpan job dari snapshot approved dalam transaction caller.
+// Pemilik queue memeriksa state linear dan UNIQUE(request_id), tanpa commit atau eksekusi SQL pengguna.
+type RequestEnqueuer func(context.Context, *sql.Tx, MigrationRequest, int64, map[string]string) (*Job, error)
 
 type WorkflowService struct {
 	DB       *sql.DB
 	Validate RequestValidator
 	FindJob  RequestJobLookup
+	Enqueue  RequestEnqueuer
 }
 
 type workflowQueryer interface {
@@ -185,7 +190,7 @@ func lockRequest(ctx context.Context, tx *sql.Tx, databaseID, requestID int64) (
 	if err != nil {
 		return nil, err
 	}
-	// Definition edits and workflow mutations lock migration before request.
+	// Urutan lock disamakan dengan perubahan definisi agar tidak deadlock.
 	if err := lockRequestMigration(ctx, tx, databaseID, migrationID); err != nil {
 		return nil, err
 	}
@@ -410,11 +415,11 @@ func (s WorkflowService) Cancel(ctx context.Context, user *auth.User, databaseID
 		return nil, ErrWorkflowUnavailable
 	}
 	// Lock request tetap ditahan agar enqueue tidak menyelip setelah pemeriksaan job.
-	jobID, err := s.FindJob(ctx, tx, requestID)
+	job, err := s.FindJob(ctx, tx, requestID)
 	if err != nil {
 		return nil, err
 	}
-	if jobID != nil {
+	if job != nil {
 		return nil, ErrConflict
 	}
 	request, err = scanRequest(tx.QueryRowContext(ctx, `
@@ -448,14 +453,19 @@ func CheckRequestApproval(ctx context.Context, tx *sql.Tx, user *auth.User, data
 	if err != nil {
 		return nil, err
 	}
+	return checkLockedRequestApproval(ctx, tx, request, revision)
+}
+
+// Caller sudah memeriksa izin dan mengunci migration lalu request.
+func checkLockedRequestApproval(ctx context.Context, tx *sql.Tx, request *MigrationRequest, revision int) (*MigrationRequest, error) {
 	if request.Revision != revision || request.Snapshot.Revision != revision ||
-		request.Snapshot.MigrationID != request.MigrationID || request.Snapshot.DatabaseID != databaseID {
+		request.Snapshot.MigrationID != request.MigrationID || request.Snapshot.DatabaseID != request.DatabaseID {
 		return nil, ErrConflict
 	}
 	var complete bool
-	err = tx.QueryRowContext(ctx, `SELECT
+	err := tx.QueryRowContext(ctx, `SELECT
 		EXISTS (SELECT 1 FROM migration_approvals WHERE request_id = $1) AND
-		NOT EXISTS (SELECT 1 FROM migration_approvals WHERE request_id = $1 AND approved_by IS NULL)`, requestID).Scan(&complete)
+		NOT EXISTS (SELECT 1 FROM migration_approvals WHERE request_id = $1 AND approved_by IS NULL)`, request.ID).Scan(&complete)
 	if err != nil {
 		return nil, err
 	}
