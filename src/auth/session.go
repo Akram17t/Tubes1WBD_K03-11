@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"time"
 
+	"tubes-wbd/src/telemetry"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -255,6 +257,7 @@ func (h *Handler) Session() gin.HandlerFunc {
 
 		c.Set(sessionKey, session)
 		setCurrentUser(c, user)
+		c.Request = c.Request.WithContext(telemetry.WithActor(ctx, user.ID))
 		c.Next()
 	}
 }

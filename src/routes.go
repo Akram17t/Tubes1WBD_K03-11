@@ -5,17 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
-	"io"
-	"log"
-	"net/http"
 	"os"
 	"path/filepath"
-	"time"
 
 	"tubes-wbd/src/admin"
+	"tubes-wbd/src/api"
 	"tubes-wbd/src/auth"
 	"tubes-wbd/src/database"
 	"tubes-wbd/src/migration"
+	"tubes-wbd/src/telemetry"
 
 	"github.com/gin-gonic/gin"
 )
@@ -53,17 +51,15 @@ func newRouter(deps Dependencies) (*gin.Engine, error) {
 	}
 	router := gin.New()
 	router.UseRawPath = true
+	// urutan penting: request ID dulu, lalu span, access log, baru recovery
+	// biar panic tetap kecatat di log dan span dengan request ID yang sama
 	router.Use(
-		gin.CustomRecoveryWithWriter(io.Discard, func(c *gin.Context, _ any) {
-			path := c.FullPath()
-			if path == "" {
-				path = "<unmatched>"
-			}
-			log.Printf("recovered panic: %s %s", c.Request.Method, path)
-			c.AbortWithStatus(http.StatusInternalServerError)
-		}),
-		requestLogger(),
+		telemetry.RequestIDMiddleware(),
+		telemetry.TraceMiddleware(),
+		telemetry.AccessLogMiddleware(),
+		api.Recovery(),
 	)
+	router.NoRoute(api.NoRoute())
 	router.SetHTMLTemplate(pageTemplates)
 	router.Static("/static", staticDir)
 
@@ -79,16 +75,4 @@ func newRouter(deps Dependencies) (*gin.Engine, error) {
 	migration.RegisterRoutes(router, deps.PlatformDB, deps.TargetDB)
 	admin.RegisterRoutes(router, deps.PlatformDB)
 	return router, nil
-}
-
-func requestLogger() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		started := time.Now()
-		c.Next()
-		path := c.FullPath()
-		if path == "" {
-			path = "<unmatched>"
-		}
-		log.Printf("%s %s %d %s", c.Request.Method, path, c.Writer.Status(), time.Since(started))
-	}
 }
