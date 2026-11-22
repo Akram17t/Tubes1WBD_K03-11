@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,6 +16,7 @@ import (
 	"tubes-wbd/src/database"
 	"tubes-wbd/src/migration"
 	"tubes-wbd/src/platformdb"
+	"tubes-wbd/src/telemetry"
 )
 
 func main() {
@@ -30,6 +32,20 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
 	}
+
+	// log JSON ke stdout, span console ke stderr biar stream log tetap rapi
+	slog.SetDefault(telemetry.NewLogger(os.Stdout, config.LogLevel))
+	shutdownTracing, err := telemetry.SetupTracing("tubes-wbd-api", config.TraceExporter, os.Stderr)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTracing(flushCtx); err != nil {
+			slog.Error("tracing.shutdown_failed", "error", err.Error())
+		}
+	}()
 
 	platformDB, err := platformdb.Connect(ctx, config.PlatformDatabaseURL)
 	if err != nil {
@@ -49,7 +65,7 @@ func run(ctx context.Context) error {
 	deps := Dependencies{Config: config, PlatformDB: platformDB, TargetDB: connections.Target, TargetConnections: connections}
 	recoveryCtx, cancelRecovery := context.WithTimeout(ctx, 10*time.Second)
 	if err := migration.RecoverRunning(recoveryCtx, platformDB, deps.TargetDB); err != nil {
-		log.Print("Pemulihan migration belum selesai; status akan diperiksa sebelum eksekusi berikutnya")
+		slog.Warn("migration.recovery_incomplete", "error", telemetry.SafeError(err))
 	}
 	cancelRecovery()
 	router, err := newRouter(deps)
@@ -64,7 +80,7 @@ func run(ctx context.Context) error {
 
 	serverErrors := make(chan error, 1)
 	go func() {
-		log.Printf("HTTP server listening on %s", config.AppAddr)
+		slog.Info("http.server_started", "addr", config.AppAddr)
 		serverErrors <- server.ListenAndServe()
 	}()
 

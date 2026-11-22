@@ -4,9 +4,12 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
+
+	"tubes-wbd/src/telemetry"
 )
 
 type Config struct {
@@ -20,6 +23,8 @@ type Config struct {
 	SessionGracePeriod      time.Duration
 	AdminUsername           string
 	AdminPassword           string
+	LogLevel                slog.Level
+	TraceExporter           string
 }
 
 // LoadConfig reads .env defaults, then validates application settings.
@@ -64,6 +69,15 @@ func LoadConfig() (Config, error) {
 	// dipakai buat bikin Platform Admin pertama, password ga di-trim
 	config.AdminUsername = envOrDefault("ADMIN_USERNAME", "")
 	config.AdminPassword = os.Getenv("ADMIN_PASSWORD")
+
+	// LOG_LEVEL default info, TRACE_EXPORTER default console (none buat matiin span)
+	if config.LogLevel, err = telemetry.ParseLevel(envOrDefault("LOG_LEVEL", "info")); err != nil {
+		return Config{}, err
+	}
+	config.TraceExporter = envOrDefault("TRACE_EXPORTER", telemetry.ExporterConsole)
+	if config.TraceExporter != telemetry.ExporterConsole && config.TraceExporter != telemetry.ExporterNone {
+		return Config{}, fmt.Errorf("TRACE_EXPORTER must be console or none")
+	}
 
 	if config.SessionIdleTimeout > config.SessionAbsoluteTimeout {
 		return Config{}, fmt.Errorf("SESSION_IDLE_TIMEOUT must not exceed SESSION_ABSOLUTE_TIMEOUT")
