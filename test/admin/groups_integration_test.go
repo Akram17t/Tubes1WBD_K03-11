@@ -110,9 +110,11 @@ func TestGroupCRUDValidationAndNotFound(t *testing.T) {
 		t.Errorf("hapus group: dapat %d, harusnya 303", w.Code)
 	}
 	var count int
-	db.QueryRow(`SELECT count(*) FROM groups`).Scan(&count)
-	if count != 0 {
-		t.Errorf("group harusnya sudah terhapus, masih ada %d", count)
+	if err := db.QueryRow(`SELECT count(*) FROM groups WHERE id=$1 AND is_archived AND leader_user_id IS NULL`, groupID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Error("group harusnya diarsipkan dan leader dikosongkan")
 	}
 }
 

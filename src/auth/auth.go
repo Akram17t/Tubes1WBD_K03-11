@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 
+	"tubes-wbd/src/httpapi"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -48,10 +50,14 @@ func CurrentUser(c *gin.Context) (*User, bool) {
 	return user, true
 }
 
-// tendang ke /login kalau belum login
+// RequireLogin mengirim JSON 401 untuk API atau mengarahkan halaman HTML ke login.
 func RequireLogin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if _, ok := CurrentUser(c); !ok {
+			if httpapi.IsRequest(c) {
+				httpapi.Abort(c, http.StatusUnauthorized, "unauthenticated", "Silakan login terlebih dahulu.")
+				return
+			}
 			c.Redirect(http.StatusSeeOther, "/login")
 			c.Abort()
 			return
@@ -65,6 +71,10 @@ func RequireAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, ok := CurrentUser(c)
 		if !ok || !user.IsPlatformAdmin {
+			if httpapi.IsRequest(c) {
+				httpapi.Abort(c, http.StatusForbidden, "forbidden", "Akses ditolak.")
+				return
+			}
 			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}

@@ -9,8 +9,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// semua route /admin cuma buat Platform Admin
+// RegisterRoutes memasang halaman M1 dan API pengelolaan group khusus Platform Admin.
 func RegisterRoutes(r gin.IRouter, db *sql.DB) {
+	registerGroupAPIRoutes(r, db)
 	router := r.Group("", auth.RequireLogin(), auth.RequireAdmin())
 
 	users := &userHandler{db: db}
@@ -27,6 +28,7 @@ func RegisterRoutes(r gin.IRouter, db *sql.DB) {
 	registerDatabaseAccessRoutes(router, db)
 }
 
+// notImplemented mengembalikan status untuk fitur HTML yang belum tersedia.
 func notImplemented(c *gin.Context) {
 	c.String(http.StatusNotImplemented, "Not Implemented")
 }
