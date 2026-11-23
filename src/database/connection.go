@@ -40,14 +40,14 @@ var (
 
 // Connection is safe to pass to templates: it never contains a stored password.
 type Connection struct {
-	ID           int64
-	Name         string
-	Host         string
-	Port         int
-	DatabaseName string
-	DBUsername   string
-	SSLMode      string
-	IsActive     bool
+	ID           int64  `json:"id,string"`
+	Name         string `json:"name"`
+	Host         string `json:"host"`
+	Port         int    `json:"port"`
+	DatabaseName string `json:"database_name"`
+	DBUsername   string `json:"db_username"`
+	SSLMode      string `json:"ssl_mode"`
+	IsActive     bool   `json:"is_active"`
 }
 
 type ConnectionInput struct {
@@ -111,18 +111,23 @@ func (s *ConnectionService) Find(ctx context.Context, user *auth.User, id int64)
 }
 
 func (s *ConnectionService) Create(ctx context.Context, user *auth.User, input ConnectionInput) error {
+	_, err := s.create(ctx, user, input, true)
+	return err
+}
+
+func (s *ConnectionService) create(ctx context.Context, user *auth.User, input ConnectionInput, active bool) (Connection, error) {
 	if err := auth.Authorize(ctx, s.platformDB, user, auth.ManagePlatform, 0); err != nil {
-		return err
+		return Connection{}, err
 	}
 	input, err := validateConnection(input, true)
 	if err != nil {
-		return err
+		return Connection{}, err
 	}
 	encrypted, err := s.encryptPassword(input.Password)
 	if err != nil {
-		return err
+		return Connection{}, err
 	}
-	return (connectionRepository{db: s.platformDB}).create(ctx, input, encrypted, user.ID)
+	return (connectionRepository{db: s.platformDB}).create(ctx, input, encrypted, user.ID, active)
 }
 
 func (s *ConnectionService) Update(ctx context.Context, user *auth.User, id int64, input ConnectionInput) error {
