@@ -24,7 +24,12 @@ type storedConnection struct {
 }
 
 func (r connectionRepository) list(ctx context.Context) ([]Connection, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT `+connectionColumns+` FROM database_connections ORDER BY name,id`)
+	return r.listPage(ctx, 0, 0)
+}
+
+func (r connectionRepository) listPage(ctx context.Context, limit, offset int) ([]Connection, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT `+connectionColumns+`
+		FROM database_connections ORDER BY name,id LIMIT NULLIF($1,0) OFFSET $2`, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -63,11 +68,13 @@ func (r connectionRepository) stored(ctx context.Context, id int64) (storedConne
 	return connection, err
 }
 
-func (r connectionRepository) create(ctx context.Context, input ConnectionInput, encrypted string, createdBy int64) error {
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO database_connections(name,host,port,database_name,db_username,password_encrypted,ssl_mode,created_by)
-		VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, input.Name, input.Host, input.Port, input.DatabaseName, input.DBUsername, encrypted, input.SSLMode, createdBy)
-	return connectionDatabaseError(err)
+func (r connectionRepository) create(ctx context.Context, input ConnectionInput, encrypted string, createdBy int64, active bool) (Connection, error) {
+	var connection Connection
+	err := scanConnection(r.db.QueryRowContext(ctx, `
+		INSERT INTO database_connections(name,host,port,database_name,db_username,password_encrypted,ssl_mode,created_by,is_active)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING `+connectionColumns,
+		input.Name, input.Host, input.Port, input.DatabaseName, input.DBUsername, encrypted, input.SSLMode, createdBy, active), &connection)
+	return connection, connectionDatabaseError(err)
 }
 
 func (r connectionRepository) update(ctx context.Context, id int64, input ConnectionInput, encrypted string) error {
