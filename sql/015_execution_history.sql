@@ -82,7 +82,8 @@ ALTER TABLE migration_executions
     ADD CONSTRAINT migration_executions_target_operation_check CHECK (
         (operation = 'rollback') = (target_execution_id IS NOT NULL)
     ),
-    ADD CONSTRAINT migration_executions_history_sequence_check CHECK (
+    -- Nama berbeda dari CHECK (history_sequence > 0) yang dibuat otomatis saat ADD COLUMN.
+    ADD CONSTRAINT migration_executions_history_sequence_status_check CHECK (
         history_sequence IS NULL OR status = 'success'
     ),
     ADD CONSTRAINT migration_executions_target_not_self_check CHECK (

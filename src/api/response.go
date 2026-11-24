@@ -2,6 +2,7 @@
 package api
 
 import (
+	"crypto/rand"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -77,7 +78,13 @@ type Page struct {
 
 // ambil meta dasar dari context request (request_id dari middleware)
 func baseMeta(c *gin.Context) Meta {
-	return Meta{RequestID: telemetry.RequestID(c.Request.Context())}
+	id := telemetry.RequestID(c.Request.Context())
+	if id == "" {
+		id = "http-" + rand.Text()
+		c.Request = c.Request.WithContext(telemetry.WithRequestID(c.Request.Context(), id))
+	}
+	c.Header(telemetry.RequestIDHeader, id)
+	return Meta{RequestID: id}
 }
 
 // kirim response sukses {data, meta}, data nil jadi null (misal logout)
@@ -117,21 +124,13 @@ func NotFound(c *gin.Context) {
 
 // baca ?limit=&offset=, default 50/0. Kalau ga valid langsung balas 400 dan ok=false
 func ParsePage(c *gin.Context) (Page, bool) {
-	page := Page{Limit: DefaultLimit, Offset: 0}
-	var err error
-	if raw := c.Query("limit"); raw != "" {
-		if page.Limit, err = strconv.Atoi(raw); err != nil || page.Limit < 1 || page.Limit > MaxLimit {
-			Fail(c, http.StatusBadRequest, CodeInvalidInput, invalidPaginationReason, nil)
-			return Page{}, false
-		}
+	limit, limitErr := strconv.Atoi(c.DefaultQuery("limit", strconv.Itoa(DefaultLimit)))
+	offset, offsetErr := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	if limitErr != nil || offsetErr != nil || limit < 1 || limit > MaxLimit || offset < 0 {
+		Fail(c, http.StatusBadRequest, CodeInvalidInput, invalidPaginationReason, nil)
+		return Page{}, false
 	}
-	if raw := c.Query("offset"); raw != "" {
-		if page.Offset, err = strconv.Atoi(raw); err != nil || page.Offset < 0 {
-			Fail(c, http.StatusBadRequest, CodeInvalidInput, invalidPaginationReason, nil)
-			return Page{}, false
-		}
-	}
-	return page, true
+	return Page{Limit: limit, Offset: offset}, true
 }
 
 // ID BIGINT dikirim sebagai string desimal biar aman di JavaScript

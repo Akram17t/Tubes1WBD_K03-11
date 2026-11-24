@@ -8,7 +8,6 @@ import (
 
 	"tubes-wbd/src/api"
 	"tubes-wbd/src/auth"
-	"tubes-wbd/src/httpapi"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,6 +23,7 @@ type connectionChanges struct {
 	IsActive     json.RawMessage `json:"is_active"`
 }
 
+// registerConnectionAPIRoutes memasang API admin dengan session dan CSRF yang sama seperti M1.
 func registerConnectionAPIRoutes(router gin.IRouter, service *ConnectionService) {
 	h := connectionHandler{service: service}
 	r := router.Group("/api/admin/connections", auth.RequireLogin(), auth.RequireAdmin(), auth.CSRF())
@@ -48,12 +48,13 @@ func (changes connectionChanges) apply(current Connection) (ConnectionInput, boo
 		{changes.SSLMode, &input.SSLMode}, {changes.Password, &input.Password}, {changes.IsActive, &active},
 	} {
 		if field.raw != nil && (bytes.Equal(bytes.TrimSpace(field.raw), []byte("null")) || json.Unmarshal(field.raw, field.target) != nil) {
-			return ConnectionInput{}, false, httpapi.ErrInvalidInput
+			return ConnectionInput{}, false, api.ErrInvalidInput
 		}
 	}
 	return input, active, nil
 }
 
+// listAPI membaca satu halaman koneksi menggunakan format response bersama.
 func (h connectionHandler) listAPI(c *gin.Context) {
 	page, ok := api.ParsePage(c)
 	if !ok {
@@ -71,6 +72,7 @@ func (h connectionHandler) listAPI(c *gin.Context) {
 	api.List(c, connections, page, hasMore)
 }
 
+// getAPI mengambil koneksi melalui service M1 tanpa mengirim password tersimpan.
 func (h connectionHandler) getAPI(c *gin.Context) {
 	id, ok := api.PathID(c, "database_id")
 	if !ok {
@@ -81,9 +83,10 @@ func (h connectionHandler) getAPI(c *gin.Context) {
 	databaseAPIRespond(c, http.StatusOK, connection, err)
 }
 
+// createAPI memetakan input JSON ke service koneksi yang juga dipakai form M1.
 func (h connectionHandler) createAPI(c *gin.Context) {
 	var changes connectionChanges
-	if err := httpapi.Decode(c, &changes); err != nil {
+	if err := api.Decode(c, &changes, false); err != nil {
 		databaseAPIError(c, err)
 		return
 	}
@@ -97,13 +100,14 @@ func (h connectionHandler) createAPI(c *gin.Context) {
 	databaseAPIRespond(c, http.StatusCreated, connection, err)
 }
 
+// patchAPI menerima perubahan parsial lalu menyerahkan transaksi ke service koneksi.
 func (h connectionHandler) patchAPI(c *gin.Context) {
 	id, ok := api.PathID(c, "database_id")
 	if !ok {
 		return
 	}
 	var changes connectionChanges
-	if err := httpapi.Decode(c, &changes); err != nil {
+	if err := api.Decode(c, &changes, false); err != nil {
 		databaseAPIError(c, err)
 		return
 	}
@@ -135,18 +139,7 @@ func (s *ConnectionService) patch(ctx context.Context, user *auth.User, id int64
 	if err != nil {
 		return Connection{}, err
 	}
-	input, err = validateConnection(input, false)
-	if err != nil {
-		return Connection{}, err
-	}
-	var encrypted string
-	if input.Password != "" {
-		encrypted, err = s.encryptPassword(input.Password)
-		if err != nil {
-			return Connection{}, err
-		}
-	}
-	if err := repository.update(ctx, id, input, encrypted); err != nil {
+	if err := s.saveUpdate(ctx, repository, id, input); err != nil {
 		return Connection{}, err
 	}
 	if previous != active {
@@ -170,6 +163,7 @@ func (s *ConnectionService) patch(ctx context.Context, user *auth.User, id int64
 	return connection, s.commitConfiguration(tx, id)
 }
 
+// testAPI menguji koneksi tersimpan lewat service M1 dan mengirim hasil yang aman.
 func (h connectionHandler) testAPI(c *gin.Context) {
 	id, ok := api.PathID(c, "database_id")
 	if !ok {

@@ -12,11 +12,19 @@ type Database struct {
 	ID          int64  `json:"id,string"`
 	Name        string `json:"name"`
 	AccessLevel string `json:"access_level"`
-	// shortcut: isi status job setelah schema queue Manuel tersedia.
+	// State job dibaca dari schema queue; blocker tetap terlihat meskipun worker berhenti.
 	ActiveJobID   *int64  `json:"active_job_id,string"`
 	BlockingJobID *int64  `json:"blocking_job_id,string"`
 	BlockReason   *string `json:"block_reason"`
 }
+
+// Join memakai indeks status job; pembacaan viewer tidak memanggil atau mengaktifkan worker.
+const databaseJobJoins = ` LEFT JOIN LATERAL (
+	SELECT id FROM migration_jobs WHERE database_id=d.id AND status='running' LIMIT 1
+) active_job ON true LEFT JOIN LATERAL (
+	SELECT id,status FROM migration_jobs WHERE database_id=d.id
+	AND status IN ('partial','partially_reverted','outcome_unknown') ORDER BY id LIMIT 1
+) blocker ON true `
 
 var (
 	ErrInvalidDatabaseID = errors.New("ID database tidak valid")
@@ -33,8 +41,9 @@ func GetDatabase(ctx context.Context, db *sql.DB, user *auth.User, dbID int64) (
 	}
 	var database Database
 	err := db.QueryRowContext(ctx, `
-		SELECT id, name FROM database_connections WHERE id = $1 AND is_active
-	`, dbID).Scan(&database.ID, &database.Name)
+		SELECT d.id,d.name,active_job.id,blocker.id,blocker.status FROM database_connections d
+	`+databaseJobJoins+` WHERE d.id = $1 AND d.is_active
+	`, dbID).Scan(&database.ID, &database.Name, &database.ActiveJobID, &database.BlockingJobID, &database.BlockReason)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrDatabaseNotFound
 	}
@@ -60,32 +69,30 @@ func GetDatabases(ctx context.Context, db *sql.DB, user *auth.User) ([]Database,
 	return getDatabasesPage(ctx, db, user, 0, 0)
 }
 
+// getDatabasesPage memfilter akses dan pagination dalam satu query tanpa memuat seluruh ID terlebih dahulu.
 func getDatabasesPage(ctx context.Context, db *sql.DB, user *auth.User, limit, offset int) ([]Database, error) {
-	ids, err := auth.AccessibleDatabaseIDs(ctx, db, user)
-	if err != nil {
-		return nil, err
+	if user == nil {
+		return nil, auth.ErrForbidden
 	}
 	databases := []Database{}
-	if len(ids) == 0 {
-		return databases, nil
-	}
 	rows, err := db.QueryContext(ctx, `
 		SELECT d.id, d.name,
-			CASE MAX(CASE a.access_level WHEN 'edit' THEN 2 ELSE 1 END) WHEN 2 THEN 'edit' ELSE 'view' END
+			CASE MAX(CASE a.access_level WHEN 'edit' THEN 2 ELSE 1 END) WHEN 2 THEN 'edit' ELSE 'view' END,
+			active_job.id,blocker.id,blocker.status
 		FROM database_connections d
 		JOIN group_database_access a ON a.database_id = d.id
 		JOIN groups g ON g.id = a.group_id AND NOT g.is_archived
-		JOIN user_groups ug ON ug.group_id = g.id AND ug.user_id = $2
-		WHERE d.is_active AND d.id = ANY($1::bigint[])
-		GROUP BY d.id ORDER BY d.name, d.id LIMIT NULLIF($3,0) OFFSET $4
-	`, ids, user.ID, limit, offset)
+		JOIN user_groups ug ON ug.group_id = g.id AND ug.user_id = $1
+	`+databaseJobJoins+` WHERE d.is_active
+		GROUP BY d.id,active_job.id,blocker.id,blocker.status ORDER BY d.name, d.id LIMIT NULLIF($2,0) OFFSET $3
+	`, user.ID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var database Database
-		if err := rows.Scan(&database.ID, &database.Name, &database.AccessLevel); err != nil {
+		if err := rows.Scan(&database.ID, &database.Name, &database.AccessLevel, &database.ActiveJobID, &database.BlockingJobID, &database.BlockReason); err != nil {
 			return nil, err
 		}
 		databases = append(databases, database)

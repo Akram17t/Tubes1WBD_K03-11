@@ -77,6 +77,9 @@ func newRouter(deps Dependencies) (*gin.Engine, error) {
 	migration.RegisterRoutes(router, deps.PlatformDB, deps.TargetDB)
 	workflow := deps.MigrationWorkflow
 	workflow.DB = deps.PlatformDB
+	if workflow.FindJob == nil {
+		workflow.FindJob = migration.FindRequestJob
+	}
 	if err := migration.RegisterWorkflowRoutes(router, workflow, auth.CSRF()); err != nil {
 		return nil, fmt.Errorf("register migration workflow: %w", err)
 	}
