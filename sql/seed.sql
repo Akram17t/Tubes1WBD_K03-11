@@ -1,4 +1,4 @@
--- Data demo untuk database platform. Jalankan setelah sql/001-010.
+-- Data demo untuk database platform. Jalankan setelah sql/001-011.
 -- Password semua user demo: demo12345 (hash Argon2id, khusus demo).
 -- Admin tidak ada di sini: dibuat otomatis dari ADMIN_USERNAME/ADMIN_PASSWORD saat aplikasi start.
 -- Koneksi target-db dan pemberian akses dibuat lewat halaman admin, karena password koneksi
@@ -28,6 +28,13 @@ JOIN groups g ON (u.username, g.name) IN (
     ('multi', 'analyst'),
     ('multi', 'developer')
 )
+WHERE NOT g.is_archived
 ON CONFLICT DO NOTHING;
+
+UPDATE groups g SET leader_user_id = u.id, updated_at = now()
+FROM users u
+WHERE (g.name, u.username) IN (('analyst', 'viewer'), ('developer', 'editor'))
+    AND NOT g.is_archived AND g.leader_user_id IS NULL AND u.is_active
+    AND EXISTS (SELECT 1 FROM user_groups ug WHERE ug.group_id = g.id AND ug.user_id = u.id);
 
 COMMIT;

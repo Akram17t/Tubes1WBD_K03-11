@@ -19,27 +19,28 @@ var (
 )
 
 type Column struct {
-	Name     string
-	DataType string
-	Nullable bool
+	Name     string `json:"name"`
+	DataType string `json:"data_type"`
+	Nullable bool   `json:"nullable"`
 }
 
 type Constraint struct {
-	Name       string
-	Type       string
-	Definition string
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	Definition string `json:"definition"`
 }
 
 type Index struct {
-	Name       string
-	Definition string
+	Name       string `json:"name"`
+	Definition string `json:"definition"`
 }
 
 type TableData struct {
-	Columns []string
-	Rows    [][]any
-	Limit   int
-	Offset  int
+	Columns []string `json:"columns"`
+	Rows    [][]any  `json:"rows"`
+	Limit   int      `json:"limit"`
+	Offset  int      `json:"offset"`
+	HasMore bool     `json:"has_more"`
 }
 
 // GetSchemas mengambil schema pengguna yang terlihat oleh akun PostgreSQL
@@ -49,6 +50,7 @@ func GetSchemas(ctx context.Context, db *sql.DB) ([]string, error) {
 		FROM information_schema.schemata
 		WHERE schema_name <> 'information_schema'
 		  AND LEFT(schema_name, 3) <> 'pg_'
+		  AND LEFT(schema_name, 11) <> '_dbplatform'
 		ORDER BY schema_name
 	`)
 	if err != nil {
@@ -80,7 +82,7 @@ func GetTables(ctx context.Context, db *sql.DB, schema string) ([]string, error)
 		SELECT table_name
 		FROM information_schema.tables
 		WHERE table_schema = $1 AND table_type = 'BASE TABLE'
-		  AND NOT (table_schema = 'public' AND table_name = '_dbplatform_migrations')
+		  AND LEFT(table_name, 12) <> '_dbplatform_'
 		ORDER BY table_name
 	`, schema)
 	if err != nil {
@@ -225,7 +227,7 @@ func GetTableData(ctx context.Context, db *sql.DB, schema, table string, limit, 
 
 	query := `SELECT * FROM ` + quoteIdentifier(schema) + `.` + quoteIdentifier(table) +
 		` ORDER BY tableoid, ctid LIMIT $1 OFFSET $2`
-	rows, err := db.QueryContext(ctx, query, limit, offset)
+	rows, err := db.QueryContext(ctx, query, limit+1, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -264,12 +266,19 @@ func GetTableData(ctx context.Context, db *sql.DB, schema, table string, limit, 
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	data.HasMore = len(data.Rows) > limit
+	if data.HasMore {
+		data.Rows = data.Rows[:limit]
+	}
 	return data, nil
 }
 
 func checkSchema(ctx context.Context, db *sql.DB, schema string) error {
 	if schema == "" || strings.ContainsRune(schema, '\x00') {
 		return ErrInvalidIdentifier
+	}
+	if schema == "information_schema" || strings.HasPrefix(schema, "pg_") || strings.HasPrefix(schema, "_dbplatform") {
+		return ErrSchemaNotFound
 	}
 	var exists bool
 	err := db.QueryRowContext(ctx, `
@@ -298,7 +307,7 @@ func checkTable(ctx context.Context, db *sql.DB, schema, table string) error {
 		SELECT EXISTS (
 			SELECT 1 FROM information_schema.tables
 			WHERE table_schema = $1 AND table_name = $2 AND table_type = 'BASE TABLE'
-			  AND NOT (table_schema = 'public' AND table_name = '_dbplatform_migrations')
+			  AND LEFT(table_name, 12) <> '_dbplatform_'
 		)
 	`, schema, table).Scan(&exists)
 	if err != nil {

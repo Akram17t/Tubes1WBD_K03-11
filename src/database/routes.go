@@ -15,7 +15,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func RegisterRoutes(router gin.IRoutes, db *sql.DB, targets TargetProvider) {
+func RegisterRoutes(router gin.IRouter, db *sql.DB, targets TargetProvider) {
+	registerViewerAPIRoutes(router, db, targets)
 	router.GET("/databases", auth.RequireLogin(), func(c *gin.Context) {
 		user, _ := auth.CurrentUser(c)
 		databases, err := GetDatabases(c.Request.Context(), db, user)
@@ -156,7 +157,7 @@ func (h viewerHandler) data(c *gin.Context) {
 	if offset > 0 {
 		page["PreviousURL"] = tableDataURL(db.ID, schema, table, limit, max(0, offset-limit))
 	}
-	if next := offset + limit; len(data.Rows) == limit && next > offset {
+	if next := offset + limit; data.HasMore && next > offset {
 		page["NextURL"] = tableDataURL(db.ID, schema, table, limit, next)
 	}
 	render(c, "viewer.html", page)

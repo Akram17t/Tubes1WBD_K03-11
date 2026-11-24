@@ -14,6 +14,7 @@ type connectionHandler struct{ service *ConnectionService }
 
 // RegisterAdminRoutes mounts connection administration separately from viewer routes.
 func RegisterAdminRoutes(router gin.IRouter, service *ConnectionService) {
+	registerConnectionAPIRoutes(router, service)
 	h := connectionHandler{service: service}
 	r := router.Group("/admin/databases", auth.RequireLogin(), auth.RequireAdmin(), auth.CSRF())
 	r.GET("", h.list)
