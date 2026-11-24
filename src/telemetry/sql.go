@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -29,7 +30,7 @@ type SQLEvent struct {
 // Attrs buat field tambahan modul (database_id, job_id, execution_id, dll)
 func LogSQL(ctx context.Context, e SQLEvent) {
 	attrs := []any{
-		"query", truncate(e.Query, maxLoggedQueryLen),
+		"query", truncate(compactSQL(e.Query), maxLoggedQueryLen),
 		"params", MaskArgs(e.Args),
 		"duration_ms", float64(time.Since(e.Started).Microseconds()) / 1000,
 	}
@@ -73,6 +74,11 @@ func SafeError(err error) string {
 		return pgErr.Message
 	}
 	return err.Error()
+}
+
+// rapihin spasi/enter/tab dari indentasi kode Go jadi satu spasi biar query enak dibaca di log
+func compactSQL(query string) string {
+	return strings.Join(strings.Fields(query), " ")
 }
 
 // potong string kepanjangan dan kasih tanda kalau kepotong

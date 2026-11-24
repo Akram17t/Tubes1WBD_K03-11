@@ -14,7 +14,8 @@ func RegisterRoutes(r gin.IRouter, db *sql.DB) {
 	registerGroupAPIRoutes(r, db)
 	router := r.Group("", auth.RequireLogin(), auth.RequireAdmin())
 
-	users := &userHandler{db: db}
+	userSvc := userService{db: db}
+	users := &userHandler{users: userSvc}
 	router.GET("/admin/users", users.list)
 	router.GET("/admin/users/new", users.newForm)
 	router.POST("/admin/users", users.create)
@@ -26,6 +27,9 @@ func RegisterRoutes(r gin.IRouter, db *sql.DB) {
 	registerGroupRoutes(router, groupService{db: db, store: groupRepository{db: db}})
 
 	registerDatabaseAccessRoutes(router, db)
+
+	// route JSON buat SPA, halaman HTML di atas tetap hidup sampai SPA-nya jadi
+	registerUserAPIRoutes(r, userSvc)
 }
 
 // notImplemented mengembalikan status untuk fitur HTML yang belum tersedia.

@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// pasang middleware session + CSRF ke semua route, lalu daftarin route login dan logout.
+// pasang middleware session + CSRF ke semua route, lalu daftarin route login/logout HTML dan /api/auth.
 // Harus dipanggil sebelum package lain daftarin route-nya.
 func RegisterRoutes(router gin.IRouter, db *sql.DB, config SessionConfig) {
 	h := &Handler{DB: db, Config: config}
@@ -17,6 +17,8 @@ func RegisterRoutes(router gin.IRouter, db *sql.DB, config SessionConfig) {
 	router.GET("/login", h.showLogin)
 	router.POST("/login", h.login)
 	router.POST("/logout", RequireLogin(), h.logout)
+
+	registerAPIRoutes(router, h)
 }
 
 // arahin ke daftar database kalau sudah login, kalau belum ke halaman login
