@@ -15,8 +15,8 @@ export function useOffset() {
   return [offset, setOffset]
 }
 
-// tombol sebelumnya/berikutnya berdasarkan meta.has_more dari server
-export function Pagination({ meta, offset, onChange }) {
+// tombol sebelumnya/berikutnya berdasarkan meta.has_more dari server; count = jumlah baris di halaman ini
+export function Pagination({ meta, offset, onChange, count }) {
   const limit = meta?.limit || PAGE_LIMIT
   if (!meta || (offset === 0 && !meta.has_more)) return null
   return (
@@ -30,7 +30,7 @@ export function Pagination({ meta, offset, onChange }) {
         ‹ Sebelumnya
       </button>
       <span className="small text-secondary">
-        Data {offset + 1}–{offset + limit}
+        Data {offset + 1}–{offset + (count ?? limit)}
       </span>
       <button
         type="button"

@@ -89,7 +89,7 @@ export function Users() {
           </table>
         </div>
       )}
-      <Pagination meta={users.meta} offset={offset} onChange={setOffset} />
+      <Pagination meta={users.meta} offset={offset} onChange={setOffset} count={users.data?.length} />
     </>
   )
 }

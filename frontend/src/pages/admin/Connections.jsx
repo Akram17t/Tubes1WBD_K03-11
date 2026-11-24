@@ -63,7 +63,7 @@ export function Connections() {
           </table>
         </div>
       )}
-      <Pagination meta={connections.meta} offset={offset} onChange={setOffset} />
+      <Pagination meta={connections.meta} offset={offset} onChange={setOffset} count={connections.data?.length} />
     </>
   )
 }

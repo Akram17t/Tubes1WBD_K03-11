@@ -11,6 +11,10 @@ import { GroupDetail } from './pages/admin/GroupDetail.jsx'
 import { Groups } from './pages/admin/Groups.jsx'
 import { UserForm } from './pages/admin/UserForm.jsx'
 import { Users } from './pages/admin/Users.jsx'
+import { DatabaseLayout } from './pages/viewer/DatabaseLayout.jsx'
+import { DatabaseOverview } from './pages/viewer/DatabaseOverview.jsx'
+import { Databases } from './pages/viewer/Databases.jsx'
+import { TableDetail } from './pages/viewer/TableDetail.jsx'
 
 // daftar halaman. key = id user biar state halaman akun lama kebuang waktu ganti akun
 export function App() {
@@ -21,6 +25,11 @@ export function App() {
       <Route element={<RequireAuth />}>
         <Route element={<Layout />}>
           <Route index element={<Home />} />
+          <Route path="databases" element={<Databases />} />
+          <Route path="databases/:databaseId" element={<DatabaseLayout />}>
+            <Route index element={<DatabaseOverview />} />
+            <Route path="tables/:schema/:table" element={<TableDetail />} />
+          </Route>
           <Route path="admin" element={<RequireAdmin />}>
             <Route path="users" element={<Users />} />
             <Route path="users/new" element={<UserForm />} />

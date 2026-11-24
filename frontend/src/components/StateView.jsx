@@ -9,14 +9,20 @@ export function Loading({ text = 'Memuat...' }) {
   )
 }
 
-// pesan error dari API + request_id biar gampang dicocokin sama log server
+// pesan error dari API + request_id biar gampang dicocokin sama log server.
+// 403 tampil sebagai "akses ditolak"; tombol coba lagi cuma buat error jaringan/server (5xx)
 export function ErrorAlert({ error, onRetry }) {
   if (!error) return null
+  const forbidden = error.status === 403 && error.code !== 'csrf_invalid'
+  const retryable = !error.status || error.status >= 500
   return (
-    <div className="alert alert-danger d-flex flex-wrap align-items-center gap-2" role="alert">
-      <span className="me-auto">{error.message || 'Terjadi kesalahan.'}</span>
+    <div className={'alert d-flex flex-wrap align-items-center gap-2 ' + (forbidden ? 'alert-warning' : 'alert-danger')} role="alert">
+      <span className="me-auto">
+        {forbidden && <strong>Akses ditolak. </strong>}
+        {forbidden && error.message === 'Akses ditolak.' ? 'Kamu tidak punya izin untuk ini.' : error.message || 'Terjadi kesalahan.'}
+      </span>
       {error.requestId && <small className="text-body-secondary font-monospace">ID: {error.requestId}</small>}
-      {onRetry && (
+      {onRetry && retryable && (
         <button type="button" className="btn btn-sm btn-outline-danger" onClick={onRetry}>
           Coba lagi
         </button>

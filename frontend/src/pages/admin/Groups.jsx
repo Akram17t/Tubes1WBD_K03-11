@@ -108,7 +108,7 @@ export function Groups() {
           </table>
         </div>
       )}
-      <Pagination meta={groups.meta} offset={offset} onChange={setOffset} />
+      <Pagination meta={groups.meta} offset={offset} onChange={setOffset} count={groups.data?.length} />
     </>
   )
 }

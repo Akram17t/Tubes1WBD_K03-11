@@ -19,3 +19,11 @@
 .navbar-text {
   max-width: 16rem;
 }
+
+/* sel data tabel: teks panjang dipotong, isi lengkap ada di tooltip (title) */
+.cell-value {
+  max-width: 20rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
