@@ -3,8 +3,8 @@ package admin
 import (
 	"net/http"
 
+	"tubes-wbd/src/api"
 	"tubes-wbd/src/auth"
-	"tubes-wbd/src/httpapi"
 
 	"github.com/gin-gonic/gin"
 )
@@ -15,26 +15,25 @@ func (h groupAPIHandler) grants(c *gin.Context) {
 	if !ok {
 		return
 	}
-	limit, offset, err := httpapi.Pagination(c)
-	if err != nil {
-		groupAPIError(c, err)
+	page, ok := api.ParsePage(c)
+	if !ok {
 		return
 	}
 	user, _ := auth.CurrentUser(c)
-	grants, err := h.access.listPage(c.Request.Context(), user, groupID, limit+1, offset)
+	grants, err := h.access.listPage(c.Request.Context(), user, groupID, page.Limit+1, page.Offset)
 	if err != nil {
 		groupAPIError(c, err)
 		return
 	}
-	hasMore := len(grants) > limit
+	hasMore := len(grants) > page.Limit
 	if hasMore {
-		grants = grants[:limit]
+		grants = grants[:page.Limit]
 	}
 	data := make([]groupGrantDTO, 0, len(grants))
 	for _, grant := range grants {
 		data = append(data, grantResponse(groupID, grant))
 	}
-	groupAPIList(c, data, limit, offset, hasMore)
+	api.List(c, data, page, hasMore)
 }
 
 // getGrant membaca grant berdasarkan pasangan ID group dan database yang diminta.
@@ -53,7 +52,7 @@ func (h groupAPIHandler) getGrant(c *gin.Context) {
 		groupAPIError(c, err)
 		return
 	}
-	httpapi.Respond(c, http.StatusOK, grantResponse(groupID, grant))
+	api.JSON(c, http.StatusOK, grantResponse(groupID, grant))
 }
 
 // saveGrant menerapkan PUT idempotent sambil menjaga aturan privilege dan session M1.
@@ -69,7 +68,7 @@ func (h groupAPIHandler) saveGrant(c *gin.Context) {
 	var input struct {
 		AccessLevel string `json:"access_level"`
 	}
-	if err := httpapi.Decode(c, &input); err != nil {
+	if err := api.Decode(c, &input, false); err != nil {
 		groupAPIError(c, err)
 		return
 	}
@@ -79,7 +78,7 @@ func (h groupAPIHandler) saveGrant(c *gin.Context) {
 		groupAPIError(c, err)
 		return
 	}
-	httpapi.Respond(c, http.StatusOK, grantResponse(groupID, grant))
+	api.JSON(c, http.StatusOK, grantResponse(groupID, grant))
 }
 
 // revokeGrant mencabut satu grant dan menutup session anggota yang terdampak.
@@ -97,5 +96,5 @@ func (h groupAPIHandler) revokeGrant(c *gin.Context) {
 		groupAPIError(c, err)
 		return
 	}
-	httpapi.Respond(c, http.StatusOK, nil)
+	api.JSON(c, http.StatusOK, nil)
 }

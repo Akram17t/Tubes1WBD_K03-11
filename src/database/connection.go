@@ -131,6 +131,7 @@ func (s *ConnectionService) create(ctx context.Context, user *auth.User, input C
 	return (connectionRepository{db: s.platformDB}).create(ctx, input, encrypted, user.ID, active)
 }
 
+// Update menyimpan perubahan form M1 melalui validasi dan enkripsi yang juga dipakai API M2.
 func (s *ConnectionService) Update(ctx context.Context, user *auth.User, id int64, input ConnectionInput) error {
 	if err := auth.Authorize(ctx, s.platformDB, user, auth.ManagePlatform, 0); err != nil {
 		return err
@@ -138,6 +139,19 @@ func (s *ConnectionService) Update(ctx context.Context, user *auth.User, id int6
 	if id <= 0 {
 		return ErrInvalidConnection
 	}
+	tx, err := s.platformDB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := s.saveUpdate(ctx, connectionRepository{db: tx}, id, input); err != nil {
+		return err
+	}
+	return s.commitConfiguration(tx, id)
+}
+
+// saveUpdate dipakai form M1 dan API M2 agar validasi, enkripsi, dan password kosong tetap konsisten.
+func (s *ConnectionService) saveUpdate(ctx context.Context, repository connectionRepository, id int64, input ConnectionInput) error {
 	input, err := validateConnection(input, false)
 	if err != nil {
 		return err
@@ -149,16 +163,7 @@ func (s *ConnectionService) Update(ctx context.Context, user *auth.User, id int6
 			return err
 		}
 	}
-	// The UPDATE itself preserves the old ciphertext when encrypted is empty.
-	tx, err := s.platformDB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if err := (connectionRepository{db: tx}).update(ctx, id, input, encrypted); err != nil {
-		return err
-	}
-	return s.commitConfiguration(tx, id)
+	return repository.update(ctx, id, input, encrypted)
 }
 
 func (s *ConnectionService) SetActive(ctx context.Context, user *auth.User, id int64, active bool) error {
@@ -408,6 +413,7 @@ func (s *ConnectionService) Close() error {
 	return errors.Join(failures...)
 }
 
+// validateConnection memvalidasi konfigurasi dengan pesan aman yang dapat langsung ditampilkan UI.
 func validateConnection(input ConnectionInput, creating bool) (ConnectionInput, error) {
 	input.Name = strings.TrimSpace(input.Name)
 	input.Host = strings.TrimSpace(input.Host)
@@ -416,11 +422,20 @@ func validateConnection(input ConnectionInput, creating bool) (ConnectionInput, 
 	if input.Name == "" || !utf8.ValidString(input.Name) || utf8.RuneCountInString(input.Name) > 100 {
 		return input, fmt.Errorf("%w: nama wajib diisi dan maksimal 100 karakter", ErrInvalidConnection)
 	}
-	if input.Host == "" || strings.ContainsAny(input.Host, " \t\r\n\x00") || input.DatabaseName == "" || input.DBUsername == "" {
-		return input, fmt.Errorf("%w: host, nama database, dan username wajib diisi", ErrInvalidConnection)
+	if input.Host == "" {
+		return input, fmt.Errorf("%w: host wajib diisi", ErrInvalidConnection)
 	}
-	if !utf8.ValidString(input.Host+input.DatabaseName+input.DBUsername) || strings.ContainsRune(input.DatabaseName+input.DBUsername, 0) {
-		return input, ErrInvalidConnection
+	if strings.ContainsAny(input.Host, " \t\r\n") {
+		return input, fmt.Errorf("%w: host tidak boleh mengandung spasi atau karakter whitespace", ErrInvalidConnection)
+	}
+	if input.DatabaseName == "" {
+		return input, fmt.Errorf("%w: nama database wajib diisi", ErrInvalidConnection)
+	}
+	if input.DBUsername == "" {
+		return input, fmt.Errorf("%w: username database wajib diisi", ErrInvalidConnection)
+	}
+	if !utf8.ValidString(input.Host+input.DatabaseName+input.DBUsername) || strings.ContainsRune(input.Host+input.DatabaseName+input.DBUsername, 0) {
+		return input, fmt.Errorf("%w: host, nama database, atau username mengandung karakter tidak valid", ErrInvalidConnection)
 	}
 	if input.Port < 1 || input.Port > 65535 {
 		return input, fmt.Errorf("%w: port harus 1 sampai 65535", ErrInvalidConnection)

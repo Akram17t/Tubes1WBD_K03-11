@@ -64,6 +64,7 @@ type RequestApproval struct {
 
 type RequestDetail struct {
 	MigrationRequest
+	WorkflowStatus  string            `json:"workflow_status"`
 	Approvals       []RequestApproval `json:"approvals"`
 	PendingGroupIDs []string          `json:"pending_group_ids"`
 	CanApprove      bool              `json:"can_approve"`

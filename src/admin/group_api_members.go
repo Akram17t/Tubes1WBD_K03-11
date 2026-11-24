@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"tubes-wbd/src/api"
 	"tubes-wbd/src/auth"
-	"tubes-wbd/src/httpapi"
 
 	"github.com/gin-gonic/gin"
 )
@@ -16,27 +16,26 @@ func (h groupAPIHandler) members(c *gin.Context) {
 	if !ok {
 		return
 	}
-	limit, offset, err := httpapi.Pagination(c)
-	if err != nil {
-		groupAPIError(c, err)
+	page, ok := api.ParsePage(c)
+	if !ok {
 		return
 	}
 	user, _ := auth.CurrentUser(c)
-	group, members, err := h.groups.membersPage(c.Request.Context(), user, groupID, limit+1, offset)
+	group, members, err := h.groups.membersPage(c.Request.Context(), user, groupID, page.Limit+1, page.Offset)
 	if err != nil {
 		groupAPIError(c, err)
 		return
 	}
-	hasMore := len(members) > limit
+	hasMore := len(members) > page.Limit
 	if hasMore {
-		members = members[:limit]
+		members = members[:page.Limit]
 	}
 	data := make([]groupMemberDTO, 0, len(members))
 	for _, member := range members {
 		isLeader := group.LeaderUserID != nil && *group.LeaderUserID == member.ID
 		data = append(data, groupMemberDTO{member.ID, member.Username, member.DisplayName, member.IsActive, isLeader})
 	}
-	groupAPIList(c, data, limit, offset, hasMore)
+	api.List(c, data, page, hasMore)
 }
 
 // addMember menambah anggota dari user_id dan mempertahankan rotasi session M1.
@@ -48,7 +47,7 @@ func (h groupAPIHandler) addMember(c *gin.Context) {
 	var input struct {
 		UserID int64 `json:"user_id,string"`
 	}
-	if err := httpapi.Decode(c, &input); err != nil {
+	if err := api.Decode(c, &input, false); err != nil {
 		groupAPIError(c, err)
 		return
 	}
@@ -57,7 +56,7 @@ func (h groupAPIHandler) addMember(c *gin.Context) {
 		groupAPIError(c, err)
 		return
 	}
-	httpapi.Respond(c, http.StatusCreated, gin.H{
+	api.JSON(c, http.StatusCreated, gin.H{
 		"group_id": strconv.FormatInt(groupID, 10), "user_id": strconv.FormatInt(input.UserID, 10),
 	})
 }
@@ -77,5 +76,5 @@ func (h groupAPIHandler) removeMember(c *gin.Context) {
 		groupAPIError(c, err)
 		return
 	}
-	httpapi.Respond(c, http.StatusOK, nil)
+	api.JSON(c, http.StatusOK, nil)
 }

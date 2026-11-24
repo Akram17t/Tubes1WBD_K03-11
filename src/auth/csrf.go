@@ -114,9 +114,11 @@ func CSRF() gin.HandlerFunc {
 		}
 
 		// SPA kirim token lewat header, halaman lama lewat hidden field form
-		token := c.PostForm(csrfFieldName)
+		var token string
 		if api.IsAPIPath(path) {
 			token = c.GetHeader(CSRFHeader)
+		} else {
+			token = c.PostForm(csrfFieldName)
 		}
 		if !validCSRFToken(session.CSRFSecret, token) {
 			rejectCSRF(c, "invalid_token")

@@ -1,13 +1,8 @@
 package migration
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
-	"io"
-	"mime"
 	"net/http"
-	"strconv"
 
 	"tubes-wbd/src/api"
 	"tubes-wbd/src/auth"
@@ -36,45 +31,20 @@ type workflowHandler struct{ service WorkflowService }
 
 // workflowIDs membaca ID positif dari URL dan menolak parameter yang tidak valid.
 func workflowIDs(c *gin.Context) (int64, int64, bool) {
-	databaseID, err := strconv.ParseInt(c.Param("database_id"), 10, 64)
-	if err != nil || databaseID < 1 {
+	databaseID, err := api.ParseID(c.Param("database_id"))
+	if err != nil {
 		workflowRespondError(c, ErrInvalidInput)
 		return 0, 0, false
 	}
 	var requestID int64
 	if raw := c.Param("request_id"); raw != "" {
-		requestID, err = strconv.ParseInt(raw, 10, 64)
-		if err != nil || requestID < 1 {
+		requestID, err = api.ParseID(raw)
+		if err != nil {
 			workflowRespondError(c, ErrInvalidInput)
 			return 0, 0, false
 		}
 	}
 	return databaseID, requestID, true
-}
-
-// workflowDecode membatasi ukuran JSON dan menolak field asing atau lebih dari satu payload.
-func workflowDecode(c *gin.Context, target any, allowEmpty bool) error {
-	encoded, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20))
-	if err != nil {
-		return ErrInvalidInput
-	}
-	encoded = bytes.TrimSpace(encoded)
-	if allowEmpty && len(encoded) == 0 {
-		return nil
-	}
-	contentType, _, err := mime.ParseMediaType(c.GetHeader("Content-Type"))
-	if err != nil || contentType != "application/json" || len(encoded) == 0 || encoded[0] != '{' {
-		return ErrInvalidInput
-	}
-	decoder := json.NewDecoder(bytes.NewReader(encoded))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return ErrInvalidInput
-	}
-	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
-		return ErrInvalidInput
-	}
-	return nil
 }
 
 // create membuat draft dari referensi migration tanpa menerima SQL dari client.
@@ -84,7 +54,7 @@ func (h workflowHandler) create(c *gin.Context) {
 		return
 	}
 	var input RequestInput
-	if err := workflowDecode(c, &input, false); err != nil {
+	if err := api.Decode(c, &input, false); err != nil {
 		workflowRespondError(c, err)
 		return
 	}
@@ -110,19 +80,17 @@ func (h workflowHandler) list(c *gin.Context) {
 	if !ok {
 		return
 	}
-	limit, errLimit := strconv.Atoi(c.DefaultQuery("limit", "50"))
-	offset, errOffset := strconv.Atoi(c.DefaultQuery("offset", "0"))
-	if errLimit != nil || errOffset != nil {
-		workflowRespondError(c, ErrInvalidInput)
+	page, ok := api.ParsePage(c)
+	if !ok {
 		return
 	}
 	user, _ := auth.CurrentUser(c)
-	requests, hasMore, err := h.service.List(c.Request.Context(), user, databaseID, limit, offset)
+	requests, hasMore, err := h.service.List(c.Request.Context(), user, databaseID, page.Limit, page.Offset)
 	if err != nil {
 		workflowRespondError(c, err)
 		return
 	}
-	api.List(c, requests, api.Page{Limit: limit, Offset: offset}, hasMore)
+	api.List(c, requests, page, hasMore)
 }
 
 // execute menerima referensi URL saja; SQL dan konfigurasi berasal dari snapshot approved.
@@ -131,7 +99,7 @@ func (h workflowHandler) execute(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := workflowDecode(c, new(struct{}), true); err != nil {
+	if err := api.Decode(c, new(struct{}), true); err != nil {
 		workflowRespondError(c, err)
 		return
 	}
@@ -147,7 +115,7 @@ func (h workflowHandler) action(action string) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		if err := workflowDecode(c, new(struct{}), true); err != nil {
+		if err := api.Decode(c, new(struct{}), true); err != nil {
 			workflowRespondError(c, err)
 			return
 		}
@@ -185,7 +153,7 @@ func workflowRespondError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, auth.ErrForbidden):
 		workflowError(c, http.StatusForbidden, "forbidden", "Akses ditolak.")
-	case errors.Is(err, ErrInvalidInput):
+	case errors.Is(err, ErrInvalidInput), errors.Is(err, api.ErrInvalidInput):
 		workflowError(c, http.StatusBadRequest, "invalid_input", ErrInvalidInput.Error())
 	case errors.Is(err, ErrNotFound):
 		workflowError(c, http.StatusNotFound, "not_found", "Pengajuan atau migration tidak ditemukan.")

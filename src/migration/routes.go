@@ -13,10 +13,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// RegisterRoutes memasang halaman migration M1 dan API history M2 menggunakan model execution bersama.
 func RegisterRoutes(router gin.IRoutes, db *sql.DB, targets database.TargetProvider) {
 	h := handlers{db: db, targets: targets}
 	login := auth.RequireLogin()
 	csrf := auth.CSRF()
+	router.GET("/api/databases/:database_id/history", login, h.history)
+	router.GET("/api/databases/:database_id/executions/:execution_id", login, h.executionDetail)
 	router.GET("/databases/:dbID/migrations", login, h.list)
 	router.GET("/databases/:dbID/migrations/new", login, h.new)
 	router.POST("/databases/:dbID/migrations", login, csrf, h.create)

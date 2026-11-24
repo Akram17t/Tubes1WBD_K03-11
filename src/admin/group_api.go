@@ -5,10 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
 
+	"tubes-wbd/src/api"
 	"tubes-wbd/src/auth"
-	"tubes-wbd/src/httpapi"
 
 	"github.com/gin-gonic/gin"
 )
@@ -80,8 +79,8 @@ func grantResponse(groupID int64, grant DatabaseGrant) groupGrantDTO {
 
 // groupAPIID membaca ID positif dari URL tanpa memakai format error HTML M1.
 func groupAPIID(c *gin.Context, name string) (int64, bool) {
-	id, err := strconv.ParseInt(c.Param(name), 10, 64)
-	if err != nil || id <= 0 {
+	id, err := api.ParseID(c.Param(name))
+	if err != nil {
 		groupAPIError(c, errInvalidGroupID)
 		return 0, false
 	}
@@ -95,32 +94,32 @@ func readGroupChanges(c *gin.Context) (groupChanges, error) {
 		Description  json.RawMessage `json:"description"`
 		LeaderUserID json.RawMessage `json:"leader_user_id"`
 	}
-	if err := httpapi.Decode(c, &input); err != nil {
+	if err := api.Decode(c, &input, false); err != nil {
 		return groupChanges{}, err
 	}
 	var changes groupChanges
 	if input.Name != nil {
 		var name string
 		if err := json.Unmarshal(input.Name, &name); err != nil {
-			return groupChanges{}, httpapi.ErrInvalidInput
+			return groupChanges{}, api.ErrInvalidInput
 		}
 		changes.Name = &name
 	}
 	if input.Description != nil {
 		changes.SetDescription = true
 		if err := json.Unmarshal(input.Description, &changes.Description); err != nil {
-			return groupChanges{}, httpapi.ErrInvalidInput
+			return groupChanges{}, api.ErrInvalidInput
 		}
 	}
 	if input.LeaderUserID != nil {
 		changes.SetLeader = true
 		var id *string
 		if err := json.Unmarshal(input.LeaderUserID, &id); err != nil {
-			return groupChanges{}, httpapi.ErrInvalidInput
+			return groupChanges{}, api.ErrInvalidInput
 		}
 		if id != nil {
-			parsed, err := strconv.ParseInt(*id, 10, 64)
-			if err != nil || parsed <= 0 {
+			parsed, err := api.ParseID(*id)
+			if err != nil {
 				return groupChanges{}, errInvalidGroupID
 			}
 			changes.LeaderUserID = &parsed
@@ -132,7 +131,7 @@ func readGroupChanges(c *gin.Context) (groupChanges, error) {
 // groupAPIError memakai pemetaan error service M1 dengan envelope JSON yang aman.
 func groupAPIError(c *gin.Context, err error) {
 	status, message := databaseAccessHTTPError(err)
-	if errors.Is(err, httpapi.ErrInvalidInput) {
+	if errors.Is(err, api.ErrInvalidInput) {
 		status, message = http.StatusBadRequest, "Input JSON atau parameter tidak valid."
 	}
 	code := "internal_error"
@@ -146,38 +145,30 @@ func groupAPIError(c *gin.Context, err error) {
 	case http.StatusConflict:
 		code = "state_conflict"
 	}
-	httpapi.Abort(c, status, code, message)
-}
-
-// groupAPIList mengirim pagination berdasarkan satu row tambahan yang dibaca dari database.
-func groupAPIList(c *gin.Context, data any, limit, offset int, hasMore bool) {
-	meta := httpapi.Meta(c)
-	meta["limit"], meta["offset"], meta["has_more"] = limit, offset, hasMore
-	c.JSON(http.StatusOK, gin.H{"data": data, "meta": meta})
+	api.Fail(c, status, code, message, nil)
 }
 
 // list mengembalikan satu halaman group aktif yang dapat dikelola admin.
 func (h groupAPIHandler) list(c *gin.Context) {
-	limit, offset, err := httpapi.Pagination(c)
-	if err != nil {
-		groupAPIError(c, err)
+	page, ok := api.ParsePage(c)
+	if !ok {
 		return
 	}
 	user, _ := auth.CurrentUser(c)
-	groups, err := h.groups.listPage(c.Request.Context(), user, limit+1, offset)
+	groups, err := h.groups.listPage(c.Request.Context(), user, page.Limit+1, page.Offset)
 	if err != nil {
 		groupAPIError(c, err)
 		return
 	}
-	hasMore := len(groups) > limit
+	hasMore := len(groups) > page.Limit
 	if hasMore {
-		groups = groups[:limit]
+		groups = groups[:page.Limit]
 	}
 	data := make([]groupDTO, 0, len(groups))
 	for _, group := range groups {
 		data = append(data, groupResponse(group))
 	}
-	groupAPIList(c, data, limit, offset, hasMore)
+	api.List(c, data, page, hasMore)
 }
 
 // create membuat group kosong sebelum admin menambahkan anggota dan menetapkan leader.
@@ -206,7 +197,7 @@ func (h groupAPIHandler) create(c *gin.Context) {
 		groupAPIError(c, err)
 		return
 	}
-	httpapi.Respond(c, http.StatusCreated, groupResponse(group))
+	api.JSON(c, http.StatusCreated, groupResponse(group))
 }
 
 // get mengembalikan detail group aktif dengan format DTO API.
@@ -221,7 +212,7 @@ func (h groupAPIHandler) get(c *gin.Context) {
 		groupAPIError(c, err)
 		return
 	}
-	httpapi.Respond(c, http.StatusOK, groupResponse(group))
+	api.JSON(c, http.StatusOK, groupResponse(group))
 }
 
 // patch menerapkan perubahan parsial group dan leader dalam satu transaction.
@@ -241,7 +232,7 @@ func (h groupAPIHandler) patch(c *gin.Context) {
 		groupAPIError(c, err)
 		return
 	}
-	httpapi.Respond(c, http.StatusOK, groupResponse(group))
+	api.JSON(c, http.StatusOK, groupResponse(group))
 }
 
 // archive mencabut akses dan session anggota sambil mempertahankan record group.
@@ -255,5 +246,5 @@ func (h groupAPIHandler) archive(c *gin.Context) {
 		groupAPIError(c, err)
 		return
 	}
-	httpapi.Respond(c, http.StatusOK, nil)
+	api.JSON(c, http.StatusOK, nil)
 }

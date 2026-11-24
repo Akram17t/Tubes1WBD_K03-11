@@ -8,7 +8,6 @@ import (
 
 	"tubes-wbd/src/api"
 	"tubes-wbd/src/auth"
-	"tubes-wbd/src/httpapi"
 	"tubes-wbd/src/telemetry"
 
 	"github.com/gin-gonic/gin"
@@ -123,12 +122,16 @@ func databaseAPIRespond(c *gin.Context, status int, data any, err error) {
 	api.JSON(c, status, data)
 }
 
+// databaseAPIError memetakan error service M1 menjadi JSON tanpa membocorkan credential target.
 func databaseAPIError(c *gin.Context, err error) {
 	status, code, message := http.StatusInternalServerError, api.CodeInternal, "Operasi database tidak dapat diproses."
 	switch {
 	case errors.Is(err, auth.ErrForbidden):
 		status, code, message = http.StatusForbidden, api.CodeForbidden, "Akses ditolak."
-	case errors.Is(err, httpapi.ErrInvalidInput), errors.Is(err, ErrInvalidConnection),
+	case errors.Is(err, ErrInvalidConnection):
+		// Error validasi dibuat oleh aplikasi dengan pesan tetap, tanpa nilai input atau credential.
+		status, code, message = http.StatusBadRequest, api.CodeInvalidInput, err.Error()
+	case errors.Is(err, api.ErrInvalidInput),
 		errors.Is(err, ErrInvalidIdentifier), errors.Is(err, ErrInvalidPagination):
 		status, code, message = http.StatusBadRequest, api.CodeInvalidInput, "Input JSON atau parameter tidak valid."
 	case errors.Is(err, ErrConnectionNotFound), errors.Is(err, ErrDatabaseNotFound),

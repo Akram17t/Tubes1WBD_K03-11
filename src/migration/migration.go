@@ -38,21 +38,34 @@ type Migration struct {
 }
 
 type Execution struct {
-	ID           int64
-	MigrationID  int64
-	ExecutedBy   int64
-	SQLSnapshot  string
-	Status       string
-	StartedAt    time.Time
-	FinishedAt   sql.NullTime
-	ErrorMessage sql.NullString
+	ID                int64
+	MigrationID       int64
+	ExecutedBy        int64
+	SQLSnapshot       string
+	Status            string
+	StartedAt         time.Time
+	FinishedAt        sql.NullTime
+	ErrorMessage      sql.NullString
+	Revision          int
+	Operation         string
+	Attempt           int
+	RequestID         *int64
+	JobID             *int64
+	SourceJobID       *int64
+	TargetExecutionID *int64
+	HistorySequence   *int64
+	SQLState          *string
+	Progress          JobProgress
 }
 
 const migrationColumns = `id, database_id, version, title, description,
 	sql_content, status, created_by, created_at, updated_at`
 
 const executionColumns = `id, migration_id, executed_by, sql_snapshot,
-	status, started_at, finished_at, error_message`
+	status, started_at, finished_at, error_message, revision, operation, attempt,
+	request_id, job_id, (SELECT source_job_id FROM migration_requests WHERE id = request_id),
+	target_execution_id, history_sequence, sqlstate,
+	total_rows, committed_rows, committed_batches, reverted_rows, reverted_batches, last_cursor`
 
 // CreateMigration menyimpan draft SQL pada database platform
 func CreateMigration(ctx context.Context, db *sql.DB, user *auth.User, dbID int64, title, description, sqlContent string) (*Migration, error) {
@@ -439,12 +452,18 @@ func discardConnection(conn *sql.Conn) {
 	conn.Close()
 }
 
+// scanExecution dipakai pembaca M1 dan history M2 agar pemetaan snapshot serta metadata tidak digandakan.
 func scanExecution(row interface{ Scan(...any) error }) (*Execution, error) {
 	var execution Execution
 	err := row.Scan(
 		&execution.ID, &execution.MigrationID, &execution.ExecutedBy,
 		&execution.SQLSnapshot, &execution.Status, &execution.StartedAt,
 		&execution.FinishedAt, &execution.ErrorMessage,
+		&execution.Revision, &execution.Operation, &execution.Attempt,
+		&execution.RequestID, &execution.JobID, &execution.SourceJobID,
+		&execution.TargetExecutionID, &execution.HistorySequence, &execution.SQLState,
+		&execution.Progress.TotalRows, &execution.Progress.CommittedRows, &execution.Progress.CommittedBatches,
+		&execution.Progress.RevertedRows, &execution.Progress.RevertedBatches, &execution.Progress.LastCursor,
 	)
 	if err != nil {
 		return nil, err

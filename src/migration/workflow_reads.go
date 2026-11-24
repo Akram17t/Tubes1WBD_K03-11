@@ -3,10 +3,43 @@ package migration
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"strconv"
 
 	"tubes-wbd/src/auth"
 )
+
+// FindRequestJob membaca job persisten dari schema 014 tanpa membuat job atau menjalankan SQL target.
+func FindRequestJob(ctx context.Context, tx *sql.Tx, requestID int64) (*Job, error) {
+	var job Job
+	var errorCode, errorMessage *string
+	err := tx.QueryRowContext(ctx, `SELECT id,request_id,database_id,migration_id,revision,operation,status,attempt_count,
+		total_rows,committed_rows,committed_batches,reverted_rows,reverted_batches,last_cursor,error_code,error_message
+		FROM migration_jobs WHERE request_id=$1`, requestID).Scan(
+		&job.ID, &job.RequestID, &job.DatabaseID, &job.MigrationID, &job.Revision, &job.Operation, &job.Status, &job.AttemptCount,
+		&job.Progress.TotalRows, &job.Progress.CommittedRows, &job.Progress.CommittedBatches,
+		&job.Progress.RevertedRows, &job.Progress.RevertedBatches, &job.Progress.LastCursor, &errorCode, &errorMessage)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	job.AllowedActions = []string{}
+	job.BlockingDatabase = job.Status == "partial" || job.Status == "partially_reverted" || job.Status == "outcome_unknown"
+	job.StatusURL = fmt.Sprintf("/api/databases/%d/jobs/%d", job.DatabaseID, job.ID)
+	if errorCode != nil || errorMessage != nil {
+		job.Error = &JobError{}
+		if errorCode != nil {
+			job.Error.Code = *errorCode
+		}
+		if errorMessage != nil {
+			job.Error.Message = *errorMessage
+		}
+	}
+	return &job, nil
+}
 
 // List mengambil satu halaman pengajuan database dan mendeteksi keberadaan halaman berikutnya.
 func (s WorkflowService) List(ctx context.Context, user *auth.User, databaseID int64, limit, offset int) ([]MigrationRequest, bool, error) {
@@ -60,6 +93,7 @@ func (s WorkflowService) Get(ctx context.Context, user *auth.User, databaseID, r
 		return nil, err
 	}
 	detail := &RequestDetail{MigrationRequest: *request, Approvals: []RequestApproval{}, PendingGroupIDs: []string{}, AllowedActions: []string{}}
+	detail.WorkflowStatus = request.ReviewStatus
 	rows, err := tx.QueryContext(ctx, `
 		SELECT a.group_id, a.group_name_snapshot, a.approved_by, a.approved_at,
 			a.approved_by IS NULL AND (g.is_archived OR u.id IS NULL),
@@ -103,6 +137,7 @@ func (s WorkflowService) Get(ctx context.Context, user *auth.User, databaseID, r
 	}
 	if job != nil {
 		detail.JobID = &job.ID
+		detail.WorkflowStatus = job.Status
 	}
 	level, err := auth.EffectiveLevel(ctx, tx, user.ID, databaseID)
 	if err != nil {
