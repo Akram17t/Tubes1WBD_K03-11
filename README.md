@@ -120,6 +120,14 @@ npm run dev
 
 Buka http://localhost:5173. Vite meneruskan semua request `/api` ke Go di `localhost:8080` (ubah lewat `API_TARGET` bila port berbeda). Header Host tidak diubah oleh proxy, jadi pemeriksaan Origin saat login dan token CSRF tetap aktif.
 
+Selama endpoint workflow (request, definisi migration, job, history) belum tersambung penuh di backend, halaman tersebut dapat dicoba dengan data contoh:
+
+```sh
+npm run dev:mock
+```
+
+Mode ini menambahkan mock API di dev server Vite (`frontend/mock/mockApi.js`) yang hanya menjawab endpoint workflow; login, admin, dan viewer tetap memakai Go. Data mock berada di memori dan kembali ke awal saat server Vite dijalankan ulang. Mock tidak ikut dalam hasil `npm run build`.
+
 Untuk mode production, build SPA lalu jalankan Go seperti biasa. Go menyajikan isi `frontend/dist` dan mengirim `index.html` untuk alamat halaman SPA; alamat `/api/*` yang tidak dikenal tetap JSON 404.
 
 ```sh

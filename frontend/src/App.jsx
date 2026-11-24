@@ -15,6 +15,8 @@ import { DatabaseLayout } from './pages/viewer/DatabaseLayout.jsx'
 import { DatabaseOverview } from './pages/viewer/DatabaseOverview.jsx'
 import { Databases } from './pages/viewer/Databases.jsx'
 import { TableDetail } from './pages/viewer/TableDetail.jsx'
+import { RequestDetail } from './pages/workflow/RequestDetail.jsx'
+import { Requests } from './pages/workflow/Requests.jsx'
 
 // daftar halaman. key = id user biar state halaman akun lama kebuang waktu ganti akun
 export function App() {
@@ -29,6 +31,8 @@ export function App() {
           <Route path="databases/:databaseId" element={<DatabaseLayout />}>
             <Route index element={<DatabaseOverview />} />
             <Route path="tables/:schema/:table" element={<TableDetail />} />
+            <Route path="requests" element={<Requests />} />
+            <Route path="requests/:requestId" element={<RequestDetail />} />
           </Route>
           <Route path="admin" element={<RequireAdmin />}>
             <Route path="users" element={<Users />} />

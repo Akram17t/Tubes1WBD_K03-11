@@ -31,6 +31,11 @@ export function DatabaseLayout() {
             Struktur
           </NavLink>
         </li>
+        <li className="nav-item">
+          <NavLink to={`/databases/${db.id}/requests`} className={tab}>
+            Request
+          </NavLink>
+        </li>
       </ul>
       <Outlet context={{ database: db, reloadDatabase: database.reload }} />
     </>
