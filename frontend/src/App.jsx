@@ -5,6 +5,12 @@ import { RequireAdmin, RequireAuth } from './components/RequireAuth.jsx'
 import { Home } from './pages/Home.jsx'
 import { Login } from './pages/Login.jsx'
 import { NotFound } from './pages/NotFound.jsx'
+import { ConnectionForm } from './pages/admin/ConnectionForm.jsx'
+import { Connections } from './pages/admin/Connections.jsx'
+import { GroupDetail } from './pages/admin/GroupDetail.jsx'
+import { Groups } from './pages/admin/Groups.jsx'
+import { UserForm } from './pages/admin/UserForm.jsx'
+import { Users } from './pages/admin/Users.jsx'
 
 // daftar halaman. key = id user biar state halaman akun lama kebuang waktu ganti akun
 export function App() {
@@ -16,7 +22,14 @@ export function App() {
         <Route element={<Layout />}>
           <Route index element={<Home />} />
           <Route path="admin" element={<RequireAdmin />}>
-            {/* halaman admin nyusul di tahap B */}
+            <Route path="users" element={<Users />} />
+            <Route path="users/new" element={<UserForm />} />
+            <Route path="users/:userId/edit" element={<UserForm />} />
+            <Route path="groups" element={<Groups />} />
+            <Route path="groups/:groupId" element={<GroupDetail />} />
+            <Route path="connections" element={<Connections />} />
+            <Route path="connections/new" element={<ConnectionForm />} />
+            <Route path="connections/:connectionId/edit" element={<ConnectionForm />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Route>
