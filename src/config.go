@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,7 +26,20 @@ type Config struct {
 	AdminPassword           string
 	LogLevel                slog.Level
 	TraceExporter           string
+
+	AppRole                 string
+	WorkerConcurrency       int
+	WorkerPollInterval      time.Duration
+	WorkerHeartbeatInterval time.Duration
+	JobStaleAfter           time.Duration
+	BatchSizeDefault        int
+	BatchSizeMax            int
 }
+
+const (
+	RoleAPI    = "api"
+	RoleWorker = "worker"
+)
 
 // LoadConfig reads .env defaults, then validates application settings.
 func LoadConfig() (Config, error) {
@@ -79,6 +93,10 @@ func LoadConfig() (Config, error) {
 		return Config{}, fmt.Errorf("TRACE_EXPORTER must be console or none")
 	}
 
+	if err := loadWorkerConfig(&config); err != nil {
+		return Config{}, err
+	}
+
 	if config.SessionIdleTimeout > config.SessionAbsoluteTimeout {
 		return Config{}, fmt.Errorf("SESSION_IDLE_TIMEOUT must not exceed SESSION_ABSOLUTE_TIMEOUT")
 	}
@@ -90,6 +108,55 @@ func LoadConfig() (Config, error) {
 	}
 
 	return config, nil
+}
+
+// loadWorkerConfig membaca pengaturan role dan worker M2 beserta batas validasinya.
+func loadWorkerConfig(config *Config) error {
+	var err error
+	config.AppRole = envOrDefault("APP_ROLE", RoleAPI)
+	if config.AppRole != RoleAPI && config.AppRole != RoleWorker {
+		return fmt.Errorf("APP_ROLE must be api or worker")
+	}
+	if config.WorkerConcurrency, err = intFromEnv("WORKER_CONCURRENCY", 2); err != nil {
+		return err
+	}
+	if config.WorkerPollInterval, err = durationFromEnv("WORKER_POLL_INTERVAL", time.Second); err != nil {
+		return err
+	}
+	if config.WorkerHeartbeatInterval, err = durationFromEnv("WORKER_HEARTBEAT_INTERVAL", 5*time.Second); err != nil {
+		return err
+	}
+	if config.JobStaleAfter, err = durationFromEnv("JOB_STALE_AFTER", 30*time.Second); err != nil {
+		return err
+	}
+	if config.BatchSizeDefault, err = intFromEnv("BATCH_SIZE_DEFAULT", 1000); err != nil {
+		return err
+	}
+	if config.BatchSizeMax, err = intFromEnv("BATCH_SIZE_MAX", 10000); err != nil {
+		return err
+	}
+	if config.JobStaleAfter <= config.WorkerHeartbeatInterval {
+		return fmt.Errorf("JOB_STALE_AFTER must be greater than WORKER_HEARTBEAT_INTERVAL")
+	}
+	if config.BatchSizeDefault > config.BatchSizeMax {
+		return fmt.Errorf("BATCH_SIZE_DEFAULT must not exceed BATCH_SIZE_MAX")
+	}
+	return nil
+}
+
+func intFromEnv(name string, defaultValue int) (int, error) {
+	raw, ok := os.LookupEnv(name)
+	if !ok {
+		return defaultValue, nil
+	}
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return 0, fmt.Errorf("%s must be a whole number: %w", name, err)
+	}
+	if value < 1 {
+		return 0, fmt.Errorf("%s must be greater than zero", name)
+	}
+	return value, nil
 }
 
 func envOrDefault(name, fallback string) string {
