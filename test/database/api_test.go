@@ -26,6 +26,7 @@ func apiRequest(r *gin.Engine, method, path, body, token string, cookie *http.Co
 	return w
 }
 
+// TestConnectionAPI menguji akses, validasi, dan perubahan koneksi melalui handler JSON sesungguhnya.
 func TestConnectionAPI(t *testing.T) {
 	f := testdb.New(t)
 	service := f.Connections(t)
@@ -53,6 +54,18 @@ func TestConnectionAPI(t *testing.T) {
 		w := apiRequest(r, tc.method, tc.path, tc.body, tc.csrf, tc.cookie)
 		if w.Code != tc.status || !json.Valid(w.Body.Bytes()) || strings.Contains(w.Body.String(), "password") {
 			t.Fatalf("%s %s: %d %s", tc.method, tc.path, w.Code, w.Body.String())
+		}
+	}
+	// Pesan validator harus sampai ke SPA pada create maupun PATCH, tanpa membocorkan input sensitif.
+	for _, method := range []string{"POST", "PATCH"} {
+		path := "/api/admin/connections"
+		if method == "PATCH" {
+			path += "/1"
+		}
+		body := `{"name":"Invalid host","host":"local host","database_name":"demo","db_username":"demo","password":"private-test-secret"}`
+		w := apiRequest(r, method, path, body, token, admin)
+		if w.Code != 400 || !strings.Contains(w.Body.String(), "host tidak boleh mengandung spasi") || strings.Contains(w.Body.String(), "private-test-secret") {
+			t.Fatalf("%s: pesan host hilang atau input bocor: %d %s", method, w.Code, w.Body.String())
 		}
 	}
 	w := apiRequest(r, "GET", "/api/admin/connections/1", "", "", admin)

@@ -88,6 +88,7 @@ func TestListNilSliceBecomesEmptyArray(t *testing.T) {
 	}
 }
 
+// TestParsePageRejectsInvalid memastikan semua modul menolak pagination di luar batas atau kosong.
 func TestParsePageRejectsInvalid(t *testing.T) {
 	r := newRouter()
 	r.GET("/api/items", func(c *gin.Context) {
@@ -95,7 +96,7 @@ func TestParsePageRejectsInvalid(t *testing.T) {
 			api.List(c, []int{}, page, true)
 		}
 	})
-	for _, query := range []string{"limit=0", "limit=501", "limit=abc", "offset=-1", "offset=x"} {
+	for _, query := range []string{"limit=0", "limit=501", "limit=abc", "offset=-1", "offset=x", "limit=", "offset="} {
 		w, body := call(t, r, "GET", "/api/items?"+query)
 		if w.Code != 400 || body["error"].(map[string]any)["code"] != api.CodeInvalidInput {
 			t.Errorf("%s: harus 400 invalid_input, dapat %d %v", query, w.Code, body)
