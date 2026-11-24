@@ -5,8 +5,11 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"log/slog"
 	"net/http"
 	"net/url"
+
+	"tubes-wbd/src/api"
 
 	"github.com/gin-gonic/gin"
 )
@@ -81,7 +84,11 @@ func sameOrigin(r *http.Request) bool {
 	return sourceURL.Host == r.Host
 }
 
-// middleware yang nolak POST tanpa token CSRF yang valid, pasang setelah Session. POST /login dicek lewat Origin karena belum punya session.
+// CSRFHeader header tempat SPA ngirim token CSRF di setiap request yang mengubah data.
+const CSRFHeader = "X-CSRF-Token"
+
+// middleware yang nolak POST/PATCH/DELETE tanpa token CSRF valid, pasang setelah Session.
+// Login (HTML maupun API) dicek lewat Origin karena belum punya session
 func CSRF() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		method := c.Request.Method
@@ -90,9 +97,10 @@ func CSRF() gin.HandlerFunc {
 			return
 		}
 
-		if c.Request.URL.Path == "/login" {
+		path := c.Request.URL.Path
+		if path == "/login" || path == LoginPath {
 			if !sameOrigin(c.Request) {
-				c.AbortWithStatus(http.StatusForbidden)
+				rejectCSRF(c, "origin_mismatch")
 				return
 			}
 			c.Next()
@@ -105,10 +113,25 @@ func CSRF() gin.HandlerFunc {
 			return
 		}
 
-		if !validCSRFToken(session.CSRFSecret, c.PostForm(csrfFieldName)) {
-			c.AbortWithStatus(http.StatusForbidden)
+		// SPA kirim token lewat header, halaman lama lewat hidden field form
+		token := c.PostForm(csrfFieldName)
+		if api.IsAPIPath(path) {
+			token = c.GetHeader(CSRFHeader)
+		}
+		if !validCSRFToken(session.CSRFSecret, token) {
+			rejectCSRF(c, "invalid_token")
 			return
 		}
 		c.Next()
 	}
+}
+
+// tolak request CSRF: catat ke log (tanpa isi token), /api dapet JSON 403 csrf_invalid
+func rejectCSRF(c *gin.Context, reason string) {
+	slog.WarnContext(c.Request.Context(), "auth.csrf_rejected", "reason", reason, "method", c.Request.Method, "path", c.FullPath())
+	if api.IsAPIPath(c.Request.URL.Path) {
+		api.Fail(c, http.StatusForbidden, api.CodeCSRFInvalid, "Token CSRF tidak valid. Muat ulang halaman lalu coba lagi.", nil)
+		return
+	}
+	c.AbortWithStatus(http.StatusForbidden)
 }

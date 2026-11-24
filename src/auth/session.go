@@ -42,14 +42,15 @@ func hashToken(token string) []byte {
 }
 
 // bikin session baru plus token pertamanya, balikin token asli buat cookie
-func createSession(ctx context.Context, db *sql.DB, userID int64, privilegeVersion int, config SessionConfig) (string, error) {
+// dan session-nya (dipakai API login buat bikin token CSRF)
+func createSession(ctx context.Context, db *sql.DB, userID int64, privilegeVersion int, config SessionConfig) (string, *activeSession, error) {
 	token := rand.Text()
 	csrfSecret := make([]byte, 32)
 	rand.Read(csrfSecret)
 
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	defer tx.Rollback()
 
@@ -60,17 +61,20 @@ func createSession(ctx context.Context, db *sql.DB, userID int64, privilegeVersi
 		RETURNING id
 	`, userID, config.AbsoluteTimeout.Seconds(), privilegeVersion, csrfSecret).Scan(&sessionID)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO session_tokens (token_hash, session_id) VALUES ($1, $2)
 	`, hashToken(token), sessionID)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
-	return token, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return "", nil, err
+	}
+	return token, &activeSession{ID: sessionID, CSRFSecret: csrfSecret}, nil
 }
 
 // cari session dari token cookie, sql.ErrNoRows kalau token ga valid,
@@ -235,19 +239,19 @@ func (h *Handler) Session() gin.HandlerFunc {
 			return
 		}
 		if err != nil {
-			c.AbortWithStatus(http.StatusInternalServerError)
+			abortInternal(c, err)
 			return
 		}
 
 		if err := touchSession(ctx, h.DB, session.ID); err != nil {
-			c.AbortWithStatus(http.StatusInternalServerError)
+			abortInternal(c, err)
 			return
 		}
 
 		if session.needsRotation {
 			newToken, rotated, err := rotateSession(ctx, h.DB, session.ID, token, h.Config)
 			if err != nil {
-				c.AbortWithStatus(http.StatusInternalServerError)
+				abortInternal(c, err)
 				return
 			}
 			if rotated {

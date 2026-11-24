@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 
+	"tubes-wbd/src/api"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -48,10 +50,14 @@ func CurrentUser(c *gin.Context) (*User, bool) {
 	return user, true
 }
 
-// tendang ke /login kalau belum login
+// belum login: request /api dapet JSON 401, halaman lama ditendang ke /login
 func RequireLogin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if _, ok := CurrentUser(c); !ok {
+			if api.IsAPIPath(c.Request.URL.Path) {
+				api.Fail(c, http.StatusUnauthorized, api.CodeUnauthenticated, "Silakan login terlebih dahulu.", nil)
+				return
+			}
 			c.Redirect(http.StatusSeeOther, "/login")
 			c.Abort()
 			return
@@ -60,16 +66,34 @@ func RequireLogin() gin.HandlerFunc {
 	}
 }
 
-// cuma Platform Admin yang boleh lewat, pasang setelah RequireLogin
+// cuma Platform Admin yang boleh lewat, pasang setelah RequireLogin. Di /api balasannya JSON 403
 func RequireAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, ok := CurrentUser(c)
 		if !ok || !user.IsPlatformAdmin {
-			c.AbortWithStatus(http.StatusForbidden)
+			abortForbidden(c, "Hanya Platform Admin yang boleh mengakses fitur ini.")
 			return
 		}
 		c.Next()
 	}
+}
+
+// 403 versi JSON buat /api, versi polos buat halaman lama
+func abortForbidden(c *gin.Context, message string) {
+	if api.IsAPIPath(c.Request.URL.Path) {
+		api.Fail(c, http.StatusForbidden, api.CodeForbidden, message, nil)
+		return
+	}
+	c.AbortWithStatus(http.StatusForbidden)
+}
+
+// 500 versi JSON buat /api (detail error cuma ke log), versi polos buat halaman lama
+func abortInternal(c *gin.Context, err error) {
+	if api.IsAPIPath(c.Request.URL.Path) {
+		api.Internal(c, err)
+		return
+	}
+	c.AbortWithStatus(http.StatusInternalServerError)
 }
 
 // rapihin username biar "Admin " dan "admin" dianggap sama
@@ -113,13 +137,10 @@ func (h *Handler) showLogin(c *gin.Context) {
 	renderLogin(c, http.StatusOK, "", "")
 }
 
-// cek username dan password, kalau cocok bikin session baru
+// login versi form HTML: kalau cocok bikin session baru lalu redirect ke /databases
 func (h *Handler) login(c *gin.Context) {
-	ctx := c.Request.Context()
 	username := NormalizeUsername(c.PostForm("username"))
-	password := c.PostForm("password")
-
-	userID, privilegeVersion, err := h.checkCredentials(ctx, username, password)
+	_, _, err := h.signIn(c, username, c.PostForm("password"))
 	if errors.Is(err, errInvalidLogin) {
 		renderLogin(c, http.StatusUnauthorized, errInvalidLogin.Error(), username)
 		return
@@ -128,52 +149,61 @@ func (h *Handler) login(c *gin.Context) {
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
+	c.Redirect(http.StatusSeeOther, "/databases")
+}
+
+// inti login yang dipakai versi HTML dan API: cek password, cabut session lama di browser ini,
+// bikin session baru, lalu pasang cookie. Gagal password selalu errInvalidLogin
+func (h *Handler) signIn(c *gin.Context, username, password string) (*User, *activeSession, error) {
+	ctx := c.Request.Context()
+	user, privilegeVersion, err := h.checkCredentials(ctx, username, password)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	// session lama di browser ini dicabut, login selalu dapat identifier baru
 	if session, ok := currentSession(c); ok {
 		if err := revokeSession(ctx, h.DB, session.ID); err != nil {
-			c.AbortWithStatus(http.StatusInternalServerError)
-			return
+			return nil, nil, err
 		}
 	}
 
-	token, err := createSession(ctx, h.DB, userID, privilegeVersion, h.Config)
+	token, session, err := createSession(ctx, h.DB, user.ID, privilegeVersion, h.Config)
 	if err != nil {
-		c.AbortWithStatus(http.StatusInternalServerError)
-		return
+		return nil, nil, err
 	}
 	setSessionCookie(c, token, h.Config.SecureCookie)
-	c.Redirect(http.StatusSeeOther, "/databases")
+	return user, session, nil
 }
 
 // cocokin password, semua alasan gagal dibalikin sebagai errInvalidLogin biar pesannya sama
-func (h *Handler) checkCredentials(ctx context.Context, username, password string) (int64, int, error) {
+func (h *Handler) checkCredentials(ctx context.Context, username, password string) (*User, int, error) {
 	var (
-		userID           int64
+		user             User
 		passwordHash     string
 		isActive         bool
 		privilegeVersion int
 	)
 	err := h.DB.QueryRowContext(ctx, `
-		SELECT id, password_hash, is_active, privilege_version
+		SELECT id, username, display_name, is_platform_admin, password_hash, is_active, privilege_version
 		FROM users WHERE username = $1
-	`, username).Scan(&userID, &passwordHash, &isActive, &privilegeVersion)
+	`, username).Scan(&user.ID, &user.Username, &user.DisplayName, &user.IsPlatformAdmin, &passwordHash, &isActive, &privilegeVersion)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		CheckPassword(dummyHash, password)
-		return 0, 0, errInvalidLogin
+		return nil, 0, errInvalidLogin
 	}
 	if err != nil {
-		return 0, 0, err
+		return nil, 0, err
 	}
 
 	if !CheckPassword(passwordHash, password) {
-		return 0, 0, errInvalidLogin
+		return nil, 0, errInvalidLogin
 	}
 	if !isActive {
-		return 0, 0, errInvalidLogin
+		return nil, 0, errInvalidLogin
 	}
-	return userID, privilegeVersion, nil
+	return &user, privilegeVersion, nil
 }
 
 // cabut session di backend, hapus cookie, balik ke login
