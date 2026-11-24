@@ -7,6 +7,7 @@ Platform Admin mengelola user, group, koneksi database target, dan pemberian aks
 ## Prerequisites
 
 - Go 1.26
+- Node.js 22 dan npm (untuk SPA di `frontend/`)
 - Docker (untuk menjalankan PostgreSQL 16)
 - Git
 
@@ -106,6 +107,27 @@ go run ./src
 ```
 
 Setelah terminal menampilkan `HTTP server listening on :8080`, buka http://localhost:8080 lalu login sebagai `admin` dengan password dari `.env`.
+
+### 5a. Jalankan SPA (Milestone 2)
+
+SPA React ada di folder `frontend/`. Saat development, jalankan Go (langkah 5) lalu di terminal lain:
+
+```sh
+cd frontend
+npm ci
+npm run dev
+```
+
+Buka http://localhost:5173. Vite meneruskan semua request `/api` ke Go di `localhost:8080` (ubah lewat `API_TARGET` bila port berbeda). Header Host tidak diubah oleh proxy, jadi pemeriksaan Origin saat login dan token CSRF tetap aktif.
+
+Untuk mode production, build SPA lalu jalankan Go seperti biasa. Go menyajikan isi `frontend/dist` dan mengirim `index.html` untuk alamat halaman SPA; alamat `/api/*` yang tidak dikenal tetap JSON 404.
+
+```sh
+cd frontend && npm run build && cd ..
+go run ./src
+```
+
+Selama migrasi ke SPA, halaman HTML Milestone 1 (misalnya `/login` dan `/databases`) masih dilayani Go dan akan dihapus setelah semua penggantinya selesai.
 
 ### 6. Sambungkan database contoh
 
@@ -266,6 +288,13 @@ go test -count=1 ./...
 
 Tanpa kedua variabel tersebut, integration test akan dilewati.
 
+Test SPA (API client dan helper) dijalankan dengan Vitest:
+
+```sh
+cd frontend
+npm test
+```
+
 ## Built With
 
 - [Go](https://go.dev/) - Bahasa pemrograman
@@ -275,6 +304,9 @@ Tanpa kedua variabel tersebut, integration test akan dilewati.
 - [pgx](https://github.com/jackc/pgx) - Driver PostgreSQL
 - [Argon2id](https://pkg.go.dev/golang.org/x/crypto/argon2) - Hash password
 - [MDB Bootstrap](https://mdbootstrap.com/) - Tampilan halaman
+- [React](https://react.dev/), [React Router](https://reactrouter.com/), dan [Vite](https://vite.dev/) - SPA Milestone 2
+- [Bootstrap 5](https://getbootstrap.com/) - Tampilan SPA
+- [Vitest](https://vitest.dev/) - Test SPA
 
 ## Contributing
 

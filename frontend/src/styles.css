@@ -1,0 +1,21 @@
+/* tabel & editor SQL scroll di dalam komponennya sendiri, halaman ga ikut melebar */
+.table-responsive,
+.sql-block {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.sql-block {
+  white-space: pre;
+  font-family: var(--bs-font-monospace);
+  font-size: 0.875rem;
+  background: var(--bs-tertiary-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  padding: 0.75rem;
+  max-height: 24rem;
+}
+
+.navbar-text {
+  max-width: 16rem;
+}

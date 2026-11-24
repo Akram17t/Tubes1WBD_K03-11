@@ -61,7 +61,8 @@ func newRouter(deps Dependencies) (*gin.Engine, error) {
 		telemetry.AccessLogMiddleware(),
 		api.Recovery(),
 	)
-	router.NoRoute(api.NoRoute())
+	// hasil `npm run build` di frontend/dist; kalau belum ada, non-API tetap 404 biasa
+	router.NoRoute(api.NoRoute(filepath.Join("frontend", "dist")))
 	router.SetHTMLTemplate(pageTemplates)
 	router.Static("/static", staticDir)
 
