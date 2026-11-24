@@ -187,6 +187,13 @@ func (s userService) update(ctx context.Context, actorID, id int64, patch userPa
 		}
 	}
 
+	// user yang dinonaktifin ga boleh tetap jadi leader group
+	if old.IsActive && !next.IsActive {
+		if _, err := tx.ExecContext(ctx, `UPDATE groups SET leader_user_id = NULL, updated_at = now() WHERE leader_user_id = $1`, id); err != nil {
+			return userRecord{}, err
+		}
+	}
+
 	if err := applySessionEffects(ctx, tx, old, next, newHash != ""); err != nil {
 		return userRecord{}, err
 	}

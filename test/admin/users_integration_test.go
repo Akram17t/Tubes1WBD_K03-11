@@ -246,6 +246,29 @@ func TestAdminDeactivateAndActivate(t *testing.T) {
 	}
 }
 
+// user yang jadi leader lalu dinonaktifin harus dicopot dari jabatan leader-nya
+func TestAdminDeactivateClearsGroupLeader(t *testing.T) {
+	db := openTestDB(t)
+	r := newAdminRouter(db)
+	insertUser(t, db, "admin", true)
+	budiID := insertUser(t, db, "budi", false)
+	groupID := insertGroup(t, db, "tim-a")
+	mustExec(t, db, `INSERT INTO user_groups (user_id, group_id) VALUES ($1, $2)`, budiID, groupID)
+	mustExec(t, db, `UPDATE groups SET leader_user_id = $1 WHERE id = $2`, budiID, groupID)
+	admin := login(r, "admin")
+
+	if w := adminPost(t, r, admin, "/admin/users/"+itoa(budiID)+"/deactivate", nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("nonaktifin: dapat %d, harusnya 303", w.Code)
+	}
+	var leader sql.NullInt64
+	if err := db.QueryRow(`SELECT leader_user_id FROM groups WHERE id = $1`, groupID).Scan(&leader); err != nil {
+		t.Fatal(err)
+	}
+	if leader.Valid {
+		t.Errorf("leader_user_id harusnya NULL, dapat %d", leader.Int64)
+	}
+}
+
 // ubah id ke string buat nyusun URL
 func itoa(id int64) string {
 	return strconv.FormatInt(id, 10)
