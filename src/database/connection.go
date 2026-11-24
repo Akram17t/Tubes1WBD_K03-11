@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	"tubes-wbd/src/auth"
+	"tubes-wbd/src/telemetry"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -454,6 +455,8 @@ func connectTarget(ctx context.Context, dsn string) (*sql.DB, error) {
 		return nil, ErrTargetUnavailable
 	}
 	config.ConnectTimeout = targetConnectTimeout
+	// semua query ke DB target otomatis dicatat ke log + span
+	config.Tracer = telemetry.QueryTracer{Database: "target"}
 	pool := stdlib.OpenDB(*config)
 	pool.SetMaxOpenConns(4)
 	pool.SetMaxIdleConns(1)

@@ -9,7 +9,10 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"tubes-wbd/src/telemetry"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 )
 
 const (
@@ -27,10 +30,13 @@ func Connect(ctx context.Context, dsn string) (*sql.DB, error) {
 		return nil, errors.New("platform database DSN is empty")
 	}
 
-	db, err := sql.Open("pgx", dsn)
+	config, err := pgx.ParseConfig(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("open platform database: %w", err)
+		return nil, fmt.Errorf("parse platform database DSN: %w", err)
 	}
+	// semua query ke DB platform otomatis dicatat ke log + span
+	config.Tracer = telemetry.QueryTracer{Database: "platform"}
+	db := stdlib.OpenDB(*config)
 
 	db.SetMaxOpenConns(maxOpenConnections)
 	db.SetMaxIdleConns(maxIdleConnections)
