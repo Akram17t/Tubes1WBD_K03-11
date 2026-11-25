@@ -188,7 +188,7 @@ func (h handlers) edit(c *gin.Context) {
 		respondError(c, err)
 		return
 	}
-	if migration.Status != "draft" && migration.Status != "failed" {
+	if migration.Status != "draft" {
 		respondError(c, ErrConflict)
 		return
 	}

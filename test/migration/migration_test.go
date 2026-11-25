@@ -61,18 +61,20 @@ func TestExecutionRollbackRetryAndPermissions(t *testing.T) {
 	if err := f.Target.QueryRowContext(ctx, `SELECT to_regclass('public.retry_table') IS NOT NULL`).Scan(&exists); err != nil || exists {
 		t.Fatalf("DDL gagal tidak di-rollback: %v %v", exists, err)
 	}
-	if _, err := migration.UpdateMigration(ctx, f.Platform, f.Editor, 1, failed.ID, "Coba lagi", "", `CREATE TABLE public.retry_table (id int)`); err != nil {
+	// SQL yang pernah dieksekusi immutable walaupun gagal; perbaikan memakai definisi baru.
+	if _, err := migration.UpdateMigration(ctx, f.Platform, f.Editor, 1, failed.ID, "Coba lagi", "", `CREATE TABLE public.retry_table (id int)`); !errors.Is(err, migration.ErrConflict) {
+		t.Fatalf("migration gagal dapat diedit: %v", err)
+	}
+	fixed := draft(t, f, `CREATE TABLE public.retry_table (id int)`)
+	if _, err := migration.ExecuteMigration(ctx, f.Platform, f.Target, f.Editor, 1, fixed.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := migration.ExecuteMigration(ctx, f.Platform, f.Target, f.Editor, 1, failed.ID); err != nil {
-		t.Fatal(err)
-	}
-	updated, err := migration.GetMigration(ctx, f.Platform, f.Viewer, 1, failed.ID)
+	updated, err := migration.GetMigration(ctx, f.Platform, f.Viewer, 1, fixed.ID)
 	if err != nil || updated.Version.Int64 != 2 {
 		t.Fatalf("versi sukses: %+v %v", updated, err)
 	}
 	history, err := migration.GetExecutions(ctx, f.Platform, f.Viewer, 1, failed.ID)
-	if err != nil || len(history) != 2 || history[1].SQLSnapshot != badSQL || history[1].Status != "failed" {
+	if err != nil || len(history) != 1 || history[0].SQLSnapshot != badSQL || history[0].Status != "failed" {
 		t.Fatalf("snapshot riwayat berubah: %+v %v", history, err)
 	}
 	broken := draft(t, f, `CREATE TABLE public.must_rollback (id int); COMMIT`)

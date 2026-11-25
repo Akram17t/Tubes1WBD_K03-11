@@ -108,9 +108,11 @@
       <h1 class="h3 text-break mb-4">{{.Title}}</h1>
       {{if and $.CanEdit (or (eq .Status "draft") (eq .Status "failed"))}}
       <div class="page-actions mb-4">
+      {{if eq .Status "draft"}}
       <a class="btn btn-light" href="/databases/{{$.DatabaseID}}/migrations/{{.ID}}/edit">
         Edit migration
       </a>
+      {{end}}
       <form class="m-0" method="post" action="/databases/{{$.DatabaseID}}/migrations/{{.ID}}/execute">
         <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}" />
         <button class="btn btn-primary" type="submit">Jalankan migration</button>
