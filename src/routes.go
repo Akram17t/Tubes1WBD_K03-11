@@ -75,8 +75,20 @@ func newRouter(deps Dependencies) (*gin.Engine, error) {
 	database.RegisterRoutes(router, deps.PlatformDB, deps.TargetDB)
 	database.RegisterAdminRoutes(router, deps.TargetConnections)
 	migration.RegisterRoutes(router, deps.PlatformDB, deps.TargetDB)
+	definitions := migration.DefinitionService{
+		DB:               deps.PlatformDB,
+		Targets:          deps.TargetDB,
+		BatchSizeDefault: deps.Config.BatchSizeDefault,
+		BatchSizeMax:     deps.Config.BatchSizeMax,
+	}
+	if err := migration.RegisterDefinitionRoutes(router, definitions, auth.CSRF()); err != nil {
+		return nil, fmt.Errorf("register migration definitions: %w", err)
+	}
 	workflow := deps.MigrationWorkflow
 	workflow.DB = deps.PlatformDB
+	if workflow.Validate == nil {
+		workflow.Validate = definitions.Validate
+	}
 	if workflow.FindJob == nil {
 		workflow.FindJob = migration.FindRequestJob
 	}

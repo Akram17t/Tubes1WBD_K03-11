@@ -150,6 +150,11 @@ func workflowError(c *gin.Context, status int, code, message string) {
 
 // workflowRespondError memetakan error workflow tanpa membocorkan pesan SQL atau koneksi.
 func workflowRespondError(c *gin.Context, err error) {
+	// Penolakan validator SQL/operasi sudah membawa status dan code sesuai kontrak.
+	if definitionErr, ok := errors.AsType[*DefinitionError](err); ok {
+		api.Fail(c, definitionErr.Status, definitionErr.Code, definitionErr.Message, definitionErr.Details)
+		return
+	}
 	switch {
 	case errors.Is(err, auth.ErrForbidden):
 		workflowError(c, http.StatusForbidden, "forbidden", "Akses ditolak.")
