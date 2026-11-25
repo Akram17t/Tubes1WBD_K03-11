@@ -9,12 +9,13 @@ import (
 	"tubes-wbd/src/database"
 )
 
-// RecoverRunning memulihkan eksekusi terputus dan melewati database yang masih dikunci
+// RecoverRunning memulihkan eksekusi M1 yang terputus dan melewati database yang masih dikunci.
+// Execution milik job queue dipulihkan oleh worker.
 func RecoverRunning(ctx context.Context, db *sql.DB, targets database.TargetProvider) error {
 	rows, err := db.QueryContext(ctx, `
 		SELECT DISTINCT m.database_id
 		FROM migration_executions e JOIN migrations m ON m.id = e.migration_id
-		WHERE e.status = 'running' ORDER BY m.database_id
+		WHERE e.status = 'running' AND e.job_id IS NULL ORDER BY m.database_id
 	`)
 	if err != nil {
 		return err
