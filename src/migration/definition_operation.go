@@ -6,7 +6,6 @@ import (
 	"errors"
 	"time"
 
-	"tubes-wbd/src/api"
 	"tubes-wbd/src/database"
 )
 
@@ -46,7 +45,8 @@ func loadBlockers(ctx context.Context, tx *sql.Tx, databaseID, excludeJobID int6
 		SELECT id, status FROM migration_jobs
 		WHERE database_id = $1 AND id <> $2
 			AND (status IN ('partial', 'partially_reverted', 'outcome_unknown')
-				OR (status IN ('queued', 'running') AND committed_batches > reverted_batches))
+				OR (status IN ('queued', 'running') AND CASE WHEN operation IN ('rollback', 'compensate')
+					THEN reverted_batches > 0 ELSE committed_batches > reverted_batches END))
 		ORDER BY id`, databaseID, excludeJobID)
 	if err != nil {
 		return nil, err
@@ -197,9 +197,7 @@ func checkCompensation(ctx context.Context, tx *sql.Tx, databaseID int64, input 
 		return stateConflict("Source job tidak cocok dengan migration atau revisi pengajuan.")
 	}
 	if compensationJobID != nil && *compensationJobID != ownJobID {
-		conflict := stateConflict("Source job sudah memiliki job kompensasi.").(*DefinitionError)
-		conflict.Details = map[string]any{"existing_job_id": api.FormatID(*compensationJobID)}
-		return conflict
+		return compensationExists(*compensationJobID)
 	}
 	if status != "partial" || (operation != "up" && operation != "forward") {
 		return stateConflict("Kompensasi hanya untuk job up atau forward yang berstatus partial.")

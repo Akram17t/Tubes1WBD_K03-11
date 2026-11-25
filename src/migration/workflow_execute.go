@@ -40,8 +40,9 @@ type JobProgress struct {
 }
 
 type JobError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code     string `json:"code"`
+	Message  string `json:"message"`
+	SQLState string `json:"sqlstate,omitempty"`
 }
 
 // Execute mengunci request supaya enqueue, cancel, dan klik berulang tidak bentrok.
