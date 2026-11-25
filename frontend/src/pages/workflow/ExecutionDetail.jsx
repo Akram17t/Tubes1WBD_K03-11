@@ -44,10 +44,7 @@ export function ExecutionDetail() {
               {e.error_message && (
                 <div className="alert alert-danger small mt-3 mb-0">
                   {e.error_message}
-                  <span className="d-block font-monospace text-secondary mt-1">
-                    {e.error_code}
-                    {e.sqlstate && ` · SQLSTATE ${e.sqlstate}`}
-                  </span>
+                  {e.sqlstate && <span className="d-block font-monospace text-secondary mt-1">SQLSTATE {e.sqlstate}</span>}
                 </div>
               )}
             </div>
@@ -76,7 +73,7 @@ export function ExecutionDetail() {
                   </>
                 )}
                 <dt className="col-5 fw-normal text-secondary">Oleh</dt>
-                <dd className="col-7">{actorName(e.actor_id, user)}</dd>
+                <dd className="col-7">{actorName(e.executed_by, user)}</dd>
                 {e.progress?.committed_rows > 0 && (
                   <>
                     <dt className="col-5 fw-normal text-secondary">Row ter-commit</dt>

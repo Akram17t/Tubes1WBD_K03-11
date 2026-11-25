@@ -31,7 +31,7 @@ const BATCH_DEMO = {
 function execution(id, migrationId, operation, status, minutes, extra = {}) {
   return {
     id: String(id), job_id: null, request_id: null, migration_id: String(migrationId), revision: 1, operation, attempt: 1, status,
-    target_execution_id: null, history_sequence: null, actor_id: ME, sql_snapshot: null,
+    target_execution_id: null, history_sequence: null, executed_by: ME, sql_snapshot: null,
     error_code: null, sqlstate: null, error_message: null, started_at: ago(minutes), finished_at: ago(minutes - 1),
     progress: { total_rows: null, committed_rows: 0, committed_batches: 0, reverted_rows: 0, reverted_batches: 0, last_cursor: null },
     batch_attempts: [],

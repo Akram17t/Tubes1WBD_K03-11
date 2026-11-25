@@ -89,7 +89,7 @@ export function History() {
                   <td>
                     <JobStatusBadge status={e.status} />
                   </td>
-                  <td>{actorName(e.actor_id, user)}</td>
+                  <td>{actorName(e.executed_by, user)}</td>
                   <td className="text-nowrap">{formatTime(e.started_at)}</td>
                   <td className="text-nowrap">{formatTime(e.finished_at)}</td>
                 </tr>
