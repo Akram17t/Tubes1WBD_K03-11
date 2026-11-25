@@ -1,8 +1,19 @@
-import { OPERATION, REVIEW_STATUS } from './labels.js'
+import { JOB_STATUS, OPERATION, POSITION, REVIEW_STATUS } from './labels.js'
 
 export function ReviewStatusBadge({ status }) {
   const info = REVIEW_STATUS[status] || { label: status, tone: 'secondary' }
   return <span className={`badge text-bg-${info.tone}`}>{info.label}</span>
+}
+
+// dipakai buat status job dan execution (enum-nya sama)
+export function JobStatusBadge({ status }) {
+  const info = JOB_STATUS[status] || { label: status, tone: 'secondary' }
+  return <span className={`badge text-bg-${info.tone}`}>{info.label}</span>
+}
+
+export function PositionBadge({ position }) {
+  const info = POSITION[position] || { label: position, tone: 'light' }
+  return <span className={`badge text-bg-${info.tone} border`}>{info.label}</span>
 }
 
 export function OperationBadge({ operation }) {

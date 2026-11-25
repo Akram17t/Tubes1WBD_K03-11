@@ -63,7 +63,7 @@ export function RequestDetail() {
 
       <div className="row g-3">
         <div className="col-lg-8">
-          <Snapshot request={r} />
+          <DefinitionCard title="Snapshot definisi (yang dibaca leader)" definition={r.snapshot} runs={RUNS[r.operation]} />
         </div>
         <div className="col-lg-4">
           <section className="card mb-3">
@@ -155,14 +155,12 @@ export function RequestDetail() {
   )
 }
 
-// isi snapshot yang di-review: SQL yang bakal jalan ditandai
-function Snapshot({ request }) {
-  const s = request.snapshot
-  const runs = RUNS[request.operation]
+// isi definisi migration: SQL, mode batch, irreversible. `runs` = SQL yang bakal dijalanin (ditandai)
+export function DefinitionCard({ title, definition: s, runs }) {
   return (
     <section className="card">
       <div className="card-body">
-        <h3 className="h6">Snapshot definisi (yang dibaca leader)</h3>
+        <h3 className="h6">{title}</h3>
         {s.description && <p className="mb-2">{s.description}</p>}
         <p className="small mb-3">
           Mode <strong>{s.mode === 'batch' ? 'batch' : 'normal'}</strong>

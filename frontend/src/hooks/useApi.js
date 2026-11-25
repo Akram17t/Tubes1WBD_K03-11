@@ -46,3 +46,26 @@ export function useAction() {
 
   return { busy, error, setError, run }
 }
+
+// panggil reload() tiap `ms` selama active. Berhenti waktu tab disembunyiin,
+// langsung refresh sekali begitu tab dibuka lagi (kontrak 3.1)
+export function usePolling(reload, active, ms = 2000) {
+  useEffect(() => {
+    if (!active) return undefined
+    let timer = null
+    const start = () => {
+      clearInterval(timer)
+      timer = document.hidden ? null : setInterval(reload, ms)
+    }
+    const onVisibility = () => {
+      if (!document.hidden) reload()
+      start()
+    }
+    start()
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [reload, active, ms])
+}

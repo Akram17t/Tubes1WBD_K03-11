@@ -25,17 +25,23 @@ export function DatabaseLayout() {
         <AccessBadge level={db.access_level} />
       </PageHeader>
       <DatabaseStatusAlert database={db} />
-      <ul className="nav nav-tabs mb-3 flex-nowrap overflow-auto">
+      <ul className="nav nav-tabs mb-3 flex-nowrap overflow-x-auto overflow-y-hidden">
         <li className="nav-item">
           <NavLink end to={`/databases/${db.id}`} className={() => tab({ isActive: structureActive })}>
             Struktur
           </NavLink>
         </li>
-        <li className="nav-item">
-          <NavLink to={`/databases/${db.id}/requests`} className={tab}>
-            Request
-          </NavLink>
-        </li>
+        {[
+          ['migrations', 'Migration'],
+          ['requests', 'Request'],
+          ['history', 'History'],
+        ].map(([path, label]) => (
+          <li className="nav-item" key={path}>
+            <NavLink to={`/databases/${db.id}/${path}`} className={tab}>
+              {label}
+            </NavLink>
+          </li>
+        ))}
       </ul>
       <Outlet context={{ database: db, reloadDatabase: database.reload }} />
     </>

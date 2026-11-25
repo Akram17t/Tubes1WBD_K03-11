@@ -15,6 +15,12 @@ import { DatabaseLayout } from './pages/viewer/DatabaseLayout.jsx'
 import { DatabaseOverview } from './pages/viewer/DatabaseOverview.jsx'
 import { Databases } from './pages/viewer/Databases.jsx'
 import { TableDetail } from './pages/viewer/TableDetail.jsx'
+import { MigrationDetail } from './pages/migration/MigrationDetail.jsx'
+import { MigrationForm } from './pages/migration/MigrationForm.jsx'
+import { Migrations } from './pages/migration/Migrations.jsx'
+import { ExecutionDetail } from './pages/workflow/ExecutionDetail.jsx'
+import { History } from './pages/workflow/History.jsx'
+import { JobDetail } from './pages/workflow/JobDetail.jsx'
 import { RequestDetail } from './pages/workflow/RequestDetail.jsx'
 import { Requests } from './pages/workflow/Requests.jsx'
 
@@ -31,8 +37,15 @@ export function App() {
           <Route path="databases/:databaseId" element={<DatabaseLayout />}>
             <Route index element={<DatabaseOverview />} />
             <Route path="tables/:schema/:table" element={<TableDetail />} />
+            <Route path="migrations" element={<Migrations />} />
+            <Route path="migrations/new" element={<MigrationForm />} />
+            <Route path="migrations/:migrationId" element={<MigrationDetail />} />
+            <Route path="migrations/:migrationId/edit" element={<MigrationForm />} />
             <Route path="requests" element={<Requests />} />
             <Route path="requests/:requestId" element={<RequestDetail />} />
+            <Route path="jobs/:jobId" element={<JobDetail />} />
+            <Route path="history" element={<History />} />
+            <Route path="executions/:executionId" element={<ExecutionDetail />} />
           </Route>
           <Route path="admin" element={<RequireAdmin />}>
             <Route path="users" element={<Users />} />
