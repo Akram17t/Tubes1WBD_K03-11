@@ -133,7 +133,8 @@ func GetMigration(ctx context.Context, db *sql.DB, user *auth.User, dbID, migrat
 	`, dbID, migrationID))
 }
 
-// UpdateMigration mengubah draft atau migration gagal tanpa mengubah riwayat eksekusi
+// UpdateMigration adalah jalur form M1. Hanya draft yang belum pernah dieksekusi dan tidak sedang
+// direview yang boleh diubah; SQL yang pernah dieksekusi, termasuk yang gagal, bersifat immutable.
 func UpdateMigration(ctx context.Context, db *sql.DB, user *auth.User, dbID, migrationID int64, title, description, sqlContent string) (*Migration, error) {
 	title = strings.TrimSpace(title)
 	if dbID < 1 || migrationID < 1 || !validDraft(title, sqlContent) {
@@ -143,27 +144,37 @@ func UpdateMigration(ctx context.Context, db *sql.DB, user *auth.User, dbID, mig
 		return nil, err
 	}
 
-	migration, err := scanMigration(db.QueryRowContext(ctx, `
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	// Lock row dahulu agar submit pengajuan tidak menyelip di antara pemeriksaan dan update.
+	if err := lockRequestMigration(ctx, tx, dbID, migrationID); err != nil {
+		return nil, err
+	}
+	active, err := HasActiveReview(ctx, tx, migrationID)
+	if err != nil {
+		return nil, err
+	}
+	if active {
+		return nil, ErrConflict
+	}
+	migration, err := scanMigration(tx.QueryRowContext(ctx, `
 		UPDATE migrations
-		SET title = $3, description = NULLIF($4, ''), sql_content = $5, updated_at = now()
-		WHERE database_id = $1 AND id = $2 AND status IN ('draft', 'failed')
+		SET title = $3, description = NULLIF($4, ''), sql_content = $5,
+			revision = revision + 1, updated_at = now()
+		WHERE database_id = $1 AND id = $2 AND status = 'draft' AND locked_at IS NULL
 		RETURNING `+migrationColumns,
 		dbID, migrationID, title, description, sqlContent,
 	))
-	if !errors.Is(err, ErrNotFound) {
-		return migration, err
+	if errors.Is(err, ErrNotFound) {
+		return nil, ErrConflict
 	}
-
-	var exists bool
-	if err := db.QueryRowContext(ctx, `
-		SELECT EXISTS (SELECT 1 FROM migrations WHERE database_id = $1 AND id = $2)
-	`, dbID, migrationID).Scan(&exists); err != nil {
+	if err != nil {
 		return nil, err
 	}
-	if !exists {
-		return nil, ErrNotFound
-	}
-	return nil, ErrConflict
+	return migration, tx.Commit()
 }
 
 // GetExecutions mengambil riwayat percobaan eksekusi pada satu migration
@@ -297,7 +308,7 @@ func startExecution(ctx context.Context, platform *sql.Conn, userID, dbID, migra
 
 	var snapshot string
 	err = tx.QueryRowContext(ctx, `
-		UPDATE migrations SET status = 'running', updated_at = now()
+		UPDATE migrations SET status = 'running', locked_at = COALESCE(locked_at, now()), updated_at = now()
 		WHERE database_id = $1 AND id = $2 AND status IN ('draft', 'failed')
 		RETURNING sql_content
 	`, dbID, migrationID).Scan(&snapshot)
