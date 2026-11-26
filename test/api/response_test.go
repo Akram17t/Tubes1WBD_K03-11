@@ -17,7 +17,7 @@ func newRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.Use(telemetry.RequestIDMiddleware(), telemetry.TraceMiddleware(), api.Recovery())
-	r.NoRoute(api.NoRoute())
+	r.NoRoute(api.NoRoute(""))
 	return r
 }
 

@@ -2,8 +2,12 @@ package api
 
 import (
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
+	"os"
+	"path"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -23,14 +27,60 @@ func Recovery() gin.HandlerFunc {
 	})
 }
 
-// handler buat route yang ga ketemu: /api/* dapet JSON 404,
-// sisanya 404 teks biasa (nanti diganti fallback index.html SPA)
-func NoRoute() gin.HandlerFunc {
+// route yang ga ketemu: /api/* dapet JSON 404, GET halaman lain dilayani hasil build SPA.
+// spaDir kosong / belum di-build -> 404 teks biasa kayak sebelumnya
+func NoRoute(spaDir string) gin.HandlerFunc {
+	var files fs.FS
+	if spaDir != "" {
+		if _, err := os.Stat(spaDir + "/index.html"); err == nil {
+			files = os.DirFS(spaDir)
+		}
+	}
 	return func(c *gin.Context) {
 		if IsAPIPath(c.Request.URL.Path) {
 			NotFound(c)
 			return
 		}
-		c.String(http.StatusNotFound, "404 page not found")
+		method := c.Request.Method
+		if files == nil || (method != http.MethodGet && method != http.MethodHead) {
+			c.String(http.StatusNotFound, "404 page not found")
+			return
+		}
+		serveSPA(c, files)
 	}
+}
+
+// SPA mendahulukan hasil build untuk halaman frontend agar route HTML lama tidak menimpanya.
+// Tanpa build, handler lama tetap berjalan; /api, /static, dan mutasi tidak dialihkan ke SPA.
+func SPA(spaDir string) gin.HandlerFunc {
+	_, err := os.Stat(spaDir + "/index.html")
+	ready := spaDir != "" && err == nil
+	serve := NoRoute(spaDir)
+	return func(c *gin.Context) {
+		requestPath, method := c.Request.URL.Path, c.Request.Method
+		if !ready || IsAPIPath(requestPath) || requestPath == "/static" || strings.HasPrefix(requestPath, "/static/") ||
+			(method != http.MethodGet && method != http.MethodHead) {
+			c.Next()
+			return
+		}
+		serve(c)
+		c.Abort()
+	}
+}
+
+// file build yang beneran ada (js/css/gambar) dikirim apa adanya,
+// path lain dapet index.html biar React Router yang nentuin halamannya
+func serveSPA(c *gin.Context, files fs.FS) {
+	name := strings.TrimPrefix(path.Clean("/"+c.Request.URL.Path), "/")
+	if info, err := fs.Stat(files, name); err == nil && !info.IsDir() && name != "index.html" {
+		http.ServeFileFS(c.Writer, c.Request, files, name)
+		return
+	}
+	index, err := fs.ReadFile(files, "index.html")
+	if err != nil {
+		c.String(http.StatusNotFound, "404 page not found")
+		return
+	}
+	c.Header("Cache-Control", "no-cache")
+	c.Data(http.StatusOK, "text/html; charset=utf-8", index)
 }
