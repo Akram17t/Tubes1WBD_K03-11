@@ -3,9 +3,7 @@ package admin_test
 import (
 	"database/sql"
 	"net/http"
-	"net/url"
 	"strconv"
-	"strings"
 	"testing"
 )
 
@@ -46,22 +44,22 @@ func idString(id int64) string {
 	return strconv.FormatInt(id, 10)
 }
 
-// user biasa ga boleh buka halaman group dan akses database
+// user biasa ga boleh buka API group dan akses database
 func TestGroupRoutesRejectNonAdmin(t *testing.T) {
 	db := openTestDB(t)
 	r := newAdminRouter(db)
 	insertUser(t, db, "budi", false)
 	groupID := insertGroup(t, db, "analyst")
-	budi := login(r, "budi")
+	budi := apiLogin(t, r, "budi")
 
 	paths := []string{
-		"/admin/groups",
-		"/admin/groups/new",
-		"/admin/groups/" + idString(groupID) + "/edit",
-		"/admin/groups/" + idString(groupID) + "/database-access",
+		"/api/admin/groups",
+		"/api/admin/groups/" + idString(groupID),
+		"/api/admin/groups/" + idString(groupID) + "/members",
+		"/api/admin/groups/" + idString(groupID) + "/access",
 	}
 	for _, path := range paths {
-		if w := send(r, http.MethodGet, path, nil, budi); w.Code != http.StatusForbidden {
+		if w, body := callAPI(r, http.MethodGet, path, "", budi); w.Code != http.StatusForbidden || codeOf(body) != "forbidden" {
 			t.Errorf("GET %s oleh user biasa: dapat %d, harusnya 403", path, w.Code)
 		}
 	}
@@ -72,42 +70,37 @@ func TestGroupCRUDValidationAndNotFound(t *testing.T) {
 	db := openTestDB(t)
 	r := newAdminRouter(db)
 	insertUser(t, db, "admin", true)
-	admin := login(r, "admin")
+	admin := apiLogin(t, r, "admin")
 
-	if w := adminPost(t, r, admin, "/admin/groups", url.Values{"name": {"analyst"}}); w.Code != http.StatusSeeOther {
-		t.Fatalf("bikin group: dapat %d, harusnya 303", w.Code)
+	w, body := callAPI(r, http.MethodPost, "/api/admin/groups", `{"name":"analyst"}`, admin)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("bikin group: dapat %d, harusnya 201", w.Code)
 	}
-	var groupID int64
-	db.QueryRow(`SELECT id FROM groups WHERE name = 'analyst'`).Scan(&groupID)
+	groupID := dataOf(body)["id"].(string)
 
 	tests := []struct {
-		name string
-		path string
-		form url.Values
-		want int
+		name, method, path, body string
+		want                     int
 	}{
-		{"nama kosong", "/admin/groups", url.Values{"name": {"  "}}, http.StatusBadRequest},
-		{"nama dobel", "/admin/groups", url.Values{"name": {"analyst"}}, http.StatusConflict},
-		{"update group ga ada", "/admin/groups/999/update", url.Values{"name": {"x"}}, http.StatusNotFound},
-		{"id bukan angka", "/admin/groups/abc/update", url.Values{"name": {"x"}}, http.StatusBadRequest},
-		{"hapus group ga ada", "/admin/groups/999/delete", nil, http.StatusNotFound},
+		{"nama kosong", http.MethodPost, "/api/admin/groups", `{"name":"  "}`, http.StatusBadRequest},
+		{"nama dobel", http.MethodPost, "/api/admin/groups", `{"name":"analyst"}`, http.StatusConflict},
+		{"update group ga ada", http.MethodPatch, "/api/admin/groups/999", `{"name":"x"}`, http.StatusNotFound},
+		{"id bukan angka", http.MethodPatch, "/api/admin/groups/abc", `{"name":"x"}`, http.StatusBadRequest},
+		{"hapus group ga ada", http.MethodDelete, "/api/admin/groups/999", "", http.StatusNotFound},
+		{"detail group ga ada", http.MethodGet, "/api/admin/groups/999", "", http.StatusNotFound},
 	}
 	for _, tt := range tests {
-		if w := adminPost(t, r, admin, tt.path, tt.form); w.Code != tt.want {
+		if w, _ := callAPI(r, tt.method, tt.path, tt.body, admin); w.Code != tt.want {
 			t.Errorf("%s: dapat %d, harusnya %d", tt.name, w.Code, tt.want)
 		}
 	}
 
-	if w := send(r, http.MethodGet, "/admin/groups/999/edit", nil, admin); w.Code != http.StatusNotFound {
-		t.Errorf("edit group ga ada: dapat %d, harusnya 404", w.Code)
+	path := "/api/admin/groups/" + groupID
+	if w, _ := callAPI(r, http.MethodPatch, path, `{"name":"data-analyst"}`, admin); w.Code != http.StatusOK {
+		t.Errorf("update group: dapat %d, harusnya 200", w.Code)
 	}
-
-	path := "/admin/groups/" + idString(groupID)
-	if w := adminPost(t, r, admin, path+"/update", url.Values{"name": {"data-analyst"}}); w.Code != http.StatusSeeOther {
-		t.Errorf("update group: dapat %d, harusnya 303", w.Code)
-	}
-	if w := adminPost(t, r, admin, path+"/delete", nil); w.Code != http.StatusSeeOther {
-		t.Errorf("hapus group: dapat %d, harusnya 303", w.Code)
+	if w, _ := callAPI(r, http.MethodDelete, path, "", admin); w.Code != http.StatusOK {
+		t.Errorf("hapus group: dapat %d, harusnya 200", w.Code)
 	}
 	var count int
 	if err := db.QueryRow(`SELECT count(*) FROM groups WHERE id=$1 AND is_archived AND leader_user_id IS NULL`, groupID).Scan(&count); err != nil {
@@ -125,36 +118,38 @@ func TestGroupMembersPrivilegeAndSessions(t *testing.T) {
 	insertUser(t, db, "admin", true)
 	budiID := insertUser(t, db, "budi", false)
 	groupID := insertGroup(t, db, "analyst")
-	admin := login(r, "admin")
-	login(r, "budi")
-	members := "/admin/groups/" + idString(groupID) + "/members"
+	admin := apiLogin(t, r, "admin")
+	apiLogin(t, r, "budi")
+	members := "/api/admin/groups/" + idString(groupID) + "/members"
+	add := func(userID string) int {
+		w, _ := callAPI(r, http.MethodPost, members, `{"user_id":"`+userID+`"}`, admin)
+		return w.Code
+	}
 
-	w := adminPost(t, r, admin, members, url.Values{"user_id": {idString(budiID)}})
-	if w.Code != http.StatusSeeOther {
-		t.Fatalf("tambah anggota: dapat %d, harusnya 303", w.Code)
+	if code := add(idString(budiID)); code != http.StatusCreated {
+		t.Fatalf("tambah anggota: dapat %d, harusnya 201", code)
 	}
 	if privilegeVersion(t, db, budiID) != 1 || activeSessions(t, db, budiID) != 1 {
 		t.Error("tambah anggota harus naikin privilege_version tanpa nyabut session")
 	}
+	if code := add(idString(budiID)); code != http.StatusConflict {
+		t.Errorf("anggota dobel: dapat %d, harusnya 409", code)
+	}
+	if code := add("999"); code != http.StatusNotFound {
+		t.Errorf("user ga ada: dapat %d, harusnya 404", code)
+	}
+	if code := add("abc"); code != http.StatusBadRequest {
+		t.Errorf("user_id bukan angka: dapat %d, harusnya 400", code)
+	}
 
-	if w := adminPost(t, r, admin, members, url.Values{"user_id": {idString(budiID)}}); w.Code != http.StatusConflict {
-		t.Errorf("anggota dobel: dapat %d, harusnya 409", w.Code)
-	}
-	if w := adminPost(t, r, admin, members, url.Values{"user_id": {"999"}}); w.Code != http.StatusNotFound {
-		t.Errorf("user ga ada: dapat %d, harusnya 404", w.Code)
-	}
-	if w := adminPost(t, r, admin, members, url.Values{"user_id": {"abc"}}); w.Code != http.StatusBadRequest {
-		t.Errorf("user_id bukan angka: dapat %d, harusnya 400", w.Code)
-	}
-
-	remove := members + "/" + idString(budiID) + "/remove"
-	if w := adminPost(t, r, admin, remove, nil); w.Code != http.StatusSeeOther {
-		t.Fatalf("keluarin anggota: dapat %d, harusnya 303", w.Code)
+	remove := members + "/" + idString(budiID)
+	if w, _ := callAPI(r, http.MethodDelete, remove, "", admin); w.Code != http.StatusOK {
+		t.Fatalf("keluarin anggota: dapat %d, harusnya 200", w.Code)
 	}
 	if activeSessions(t, db, budiID) != 0 {
 		t.Error("keluarin anggota harus nyabut session")
 	}
-	if w := adminPost(t, r, admin, remove, nil); w.Code != http.StatusNotFound {
+	if w, _ := callAPI(r, http.MethodDelete, remove, "", admin); w.Code != http.StatusNotFound {
 		t.Errorf("keluarin yang bukan anggota: dapat %d, harusnya 404", w.Code)
 	}
 }
@@ -167,11 +162,11 @@ func TestDeleteGroupRevokesMemberSessions(t *testing.T) {
 	budiID := insertUser(t, db, "budi", false)
 	groupID := insertGroup(t, db, "analyst")
 	mustExec(t, db, `INSERT INTO user_groups (user_id, group_id) VALUES ($1, $2)`, budiID, groupID)
-	admin := login(r, "admin")
-	login(r, "budi")
+	admin := apiLogin(t, r, "admin")
+	apiLogin(t, r, "budi")
 
-	if w := adminPost(t, r, admin, "/admin/groups/"+idString(groupID)+"/delete", nil); w.Code != http.StatusSeeOther {
-		t.Fatalf("hapus group: dapat %d, harusnya 303", w.Code)
+	if w, _ := callAPI(r, http.MethodDelete, "/api/admin/groups/"+idString(groupID), "", admin); w.Code != http.StatusOK {
+		t.Fatalf("hapus group: dapat %d, harusnya 200", w.Code)
 	}
 	if activeSessions(t, db, budiID) != 0 {
 		t.Error("hapus group harus nyabut session anggotanya")
@@ -189,17 +184,17 @@ func TestDatabaseAccessGrantAndRevoke(t *testing.T) {
 	inactiveID := insertConnection(t, db, "arsip", adminID)
 	mustExec(t, db, `UPDATE database_connections SET is_active = false WHERE id = $1`, inactiveID)
 	mustExec(t, db, `INSERT INTO user_groups (user_id, group_id) VALUES ($1, $2)`, budiID, groupID)
-	admin := login(r, "admin")
-	access := "/admin/groups/" + idString(groupID) + "/database-access"
+	admin := apiLogin(t, r, "admin")
+	access := "/api/admin/groups/" + idString(groupID) + "/access/"
 	grant := func(databaseID int64, level string) int {
-		form := url.Values{"database_id": {idString(databaseID)}, "access_level": {level}}
-		return adminPost(t, r, admin, access, form).Code
+		w, _ := callAPI(r, http.MethodPut, access+idString(databaseID), `{"access_level":"`+level+`"}`, admin)
+		return w.Code
 	}
 
-	if code := grant(targetID, "view"); code != http.StatusSeeOther || privilegeVersion(t, db, budiID) != 1 {
+	if code := grant(targetID, "view"); code != http.StatusOK || privilegeVersion(t, db, budiID) != 1 {
 		t.Errorf("kasih akses view: dapat %d, privilege_version harusnya naik", code)
 	}
-	if code := grant(targetID, "edit"); code != http.StatusSeeOther || privilegeVersion(t, db, budiID) != 2 {
+	if code := grant(targetID, "edit"); code != http.StatusOK || privilegeVersion(t, db, budiID) != 2 {
 		t.Errorf("naikin ke edit: dapat %d, privilege_version harusnya naik lagi", code)
 	}
 
@@ -219,45 +214,18 @@ func TestDatabaseAccessGrantAndRevoke(t *testing.T) {
 		}
 	}
 
-	login(r, "budi")
-	if code := grant(targetID, "view"); code != http.StatusSeeOther || activeSessions(t, db, budiID) != 0 {
+	apiLogin(t, r, "budi")
+	if code := grant(targetID, "view"); code != http.StatusOK || activeSessions(t, db, budiID) != 0 {
 		t.Errorf("turunin ke view: dapat %d, session anggota harus dicabut", code)
 	}
 
-	login(r, "budi")
-	revoke := access + "/" + idString(targetID) + "/revoke"
-	if w := adminPost(t, r, admin, revoke, nil); w.Code != http.StatusSeeOther || activeSessions(t, db, budiID) != 0 {
+	apiLogin(t, r, "budi")
+	revoke := access + idString(targetID)
+	if w, _ := callAPI(r, http.MethodDelete, revoke, "", admin); w.Code != http.StatusOK || activeSessions(t, db, budiID) != 0 {
 		t.Errorf("cabut akses: dapat %d, session anggota harus dicabut", w.Code)
 	}
-	if w := adminPost(t, r, admin, revoke, nil); w.Code != http.StatusNotFound {
+	if w, _ := callAPI(r, http.MethodDelete, revoke, "", admin); w.Code != http.StatusNotFound {
 		t.Errorf("cabut akses yang ga ada: dapat %d, harusnya 404", w.Code)
-	}
-}
-
-func TestDatabaseAccessFormOnlyOffersUnassignedTargets(t *testing.T) {
-	db := openTestDB(t)
-	r := newAdminRouter(db)
-	adminID := insertUser(t, db, "admin", true)
-	groupID := insertGroup(t, db, "analyst")
-	first := insertConnection(t, db, "football", adminID)
-	second := insertConnection(t, db, "training", adminID)
-	admin := login(r, "admin")
-	path := "/admin/groups/" + idString(groupID) + "/database-access"
-	form := url.Values{"database_id": {idString(first)}, "access_level": {"view"}}
-	if w := adminPost(t, r, admin, path, form); w.Code != http.StatusSeeOther {
-		t.Fatal("gagal menyiapkan akses group")
-	}
-	page := send(r, http.MethodGet, path, nil, admin)
-	if page.Code != http.StatusOK || strings.Contains(page.Body.String(), `<option value="`+idString(first)+`"`) || !strings.Contains(page.Body.String(), `<option value="`+idString(second)+`"`) {
-		t.Fatal("form tambah akses harus hanya menawarkan target yang belum diberikan")
-	}
-	form.Set("database_id", idString(second))
-	if w := adminPost(t, r, admin, path, form); w.Code != http.StatusSeeOther {
-		t.Fatal("gagal memberikan akses kedua")
-	}
-	page = send(r, http.MethodGet, path, nil, admin)
-	if strings.Contains(page.Body.String(), `id="database_id"`) || !strings.Contains(page.Body.String(), `name="access_level"`) {
-		t.Fatal("form tambah disembunyikan setelah semua target diberikan, perubahan akses tetap tersedia")
 	}
 }
 

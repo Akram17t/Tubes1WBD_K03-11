@@ -101,11 +101,17 @@ Nilai lainnya (`PLATFORM_DATABASE_URL` dan pengaturan session) sudah sesuai deng
 
 ### 5. Jalankan aplikasi
 
+Tampilan aplikasi berupa SPA React di folder `frontend/`. Build dulu sekali (ulangi setiap ada perubahan frontend), lalu jalankan server API dan worker migration di dua terminal:
+
 ```sh
-go run ./src
+cd frontend && npm ci && npm run build && cd ..
+APP_ROLE=api go run ./src
+APP_ROLE=worker go run ./src   # terminal kedua
 ```
 
-Setelah terminal menampilkan `HTTP server listening on :8080`, buka http://localhost:8080 lalu login sebagai `admin` dengan password dari `.env`.
+Server API menyajikan hasil build dari `frontend/dist`. Setelah terminal menampilkan `http.server_started`, buka http://localhost:8080 lalu login sebagai `admin` dengan password dari `.env`.
+
+Saat mengembangkan frontend, jalankan `npm run dev` di folder `frontend` lalu buka http://localhost:5173. Vite meneruskan request `/api` ke server Go di port 8080.
 
 ### 6. Sambungkan database contoh
 
@@ -234,7 +240,7 @@ Sebuah koneksi menyimpan host, port, nama database, username, password, dan SSL 
 | Interval rotasi  | 15 menit | `SESSION_ROTATION_INTERVAL` |
 | Grace period     | 30 detik | `SESSION_GRACE_PERIOD`      |
 
-Session disimpan di server, sedangkan browser hanya menyimpan token acak di cookie yang bersifat HttpOnly dan SameSite=Lax (serta Secure di production). Database hanya menyimpan hash SHA-256 dari setiap token. Token dirotasi saat login, setiap interval rotasi, dan setiap kali hak akses pengguna meningkat. Token lama tetap berlaku selama grace period untuk menangani request yang berjalan bersamaan, dan rotasi tidak pernah memperpanjang absolute timeout. Aplikasi menolak berjalan jika interval rotasi tidak lebih pendek dari idle timeout, atau grace period tidak lebih pendek dari interval rotasi. Setiap form yang mengubah data membawa token CSRF, dan form login dilindungi dengan pemeriksaan header Origin.
+Session disimpan di server, sedangkan browser hanya menyimpan token acak di cookie yang bersifat HttpOnly dan SameSite=Lax (serta Secure di production). Database hanya menyimpan hash SHA-256 dari setiap token. Token dirotasi saat login, setiap interval rotasi, dan setiap kali hak akses pengguna meningkat. Token lama tetap berlaku selama grace period untuk menangani request yang berjalan bersamaan, dan rotasi tidak pernah memperpanjang absolute timeout. Aplikasi menolak berjalan jika interval rotasi tidak lebih pendek dari idle timeout, atau grace period tidak lebih pendek dari interval rotasi. Setiap request API yang mengubah data membawa token CSRF di header `X-CSRF-Token`, dan login dilindungi dengan pemeriksaan header Origin.
 
 ## Testing
 
@@ -270,11 +276,12 @@ Tanpa kedua variabel tersebut, integration test akan dilewati.
 
 - [Go](https://go.dev/) - Bahasa pemrograman
 - [Gin](https://gin-gonic.com/) - Web framework HTTP
-- [html/template](https://pkg.go.dev/html/template) - Render halaman di sisi server
+- [React](https://react.dev/) + [Vite](https://vite.dev/) - SPA frontend
+- [React Router](https://reactrouter.com/) - Routing halaman di SPA
 - [PostgreSQL](https://www.postgresql.org/) - Database platform dan database target
 - [pgx](https://github.com/jackc/pgx) - Driver PostgreSQL
 - [Argon2id](https://pkg.go.dev/golang.org/x/crypto/argon2) - Hash password
-- [MDB Bootstrap](https://mdbootstrap.com/) - Tampilan halaman
+- [Bootstrap](https://getbootstrap.com/) - Tampilan halaman
 
 ## Contributing
 

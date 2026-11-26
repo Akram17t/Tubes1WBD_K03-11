@@ -50,16 +50,11 @@ func CurrentUser(c *gin.Context) (*User, bool) {
 	return user, true
 }
 
-// belum login: request /api dapet JSON 401, halaman lama ditendang ke /login
+// belum login: JSON 401, ga pernah redirect ke halaman login (SPA yang ngurus)
 func RequireLogin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if _, ok := CurrentUser(c); !ok {
-			if api.IsAPIPath(c.Request.URL.Path) {
-				api.Fail(c, http.StatusUnauthorized, api.CodeUnauthenticated, "Silakan login terlebih dahulu.", nil)
-				return
-			}
-			c.Redirect(http.StatusSeeOther, "/login")
-			c.Abort()
+			api.Fail(c, http.StatusUnauthorized, api.CodeUnauthenticated, "Silakan login terlebih dahulu.", nil)
 			return
 		}
 		c.Next()
@@ -78,22 +73,13 @@ func RequireAdmin() gin.HandlerFunc {
 	}
 }
 
-// 403 versi JSON buat /api, versi polos buat halaman lama
 func abortForbidden(c *gin.Context, message string) {
-	if api.IsAPIPath(c.Request.URL.Path) {
-		api.Fail(c, http.StatusForbidden, api.CodeForbidden, message, nil)
-		return
-	}
-	c.AbortWithStatus(http.StatusForbidden)
+	api.Fail(c, http.StatusForbidden, api.CodeForbidden, message, nil)
 }
 
-// 500 versi JSON buat /api (detail error cuma ke log), versi polos buat halaman lama
+// detail error cuma ke log, client dapet 500 generik
 func abortInternal(c *gin.Context, err error) {
-	if api.IsAPIPath(c.Request.URL.Path) {
-		api.Internal(c, err)
-		return
-	}
-	c.AbortWithStatus(http.StatusInternalServerError)
+	api.Internal(c, err)
 }
 
 // rapihin username biar "Admin " dan "admin" dianggap sama
@@ -128,31 +114,7 @@ func EnsureAdmin(ctx context.Context, db *sql.DB, username, password string) err
 	return err
 }
 
-// tampilin form login
-func (h *Handler) showLogin(c *gin.Context) {
-	if _, ok := CurrentUser(c); ok {
-		c.Redirect(http.StatusSeeOther, "/databases")
-		return
-	}
-	renderLogin(c, http.StatusOK, "", "")
-}
-
-// login versi form HTML: kalau cocok bikin session baru lalu redirect ke /databases
-func (h *Handler) login(c *gin.Context) {
-	username := NormalizeUsername(c.PostForm("username"))
-	_, _, err := h.signIn(c, username, c.PostForm("password"))
-	if errors.Is(err, errInvalidLogin) {
-		renderLogin(c, http.StatusUnauthorized, errInvalidLogin.Error(), username)
-		return
-	}
-	if err != nil {
-		c.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
-	c.Redirect(http.StatusSeeOther, "/databases")
-}
-
-// inti login yang dipakai versi HTML dan API: cek password, cabut session lama di browser ini,
+// inti login API: cek password, cabut session lama di browser ini,
 // bikin session baru, lalu pasang cookie. Gagal password selalu errInvalidLogin
 func (h *Handler) signIn(c *gin.Context, username, password string) (*User, *activeSession, error) {
 	ctx := c.Request.Context()
@@ -204,24 +166,4 @@ func (h *Handler) checkCredentials(ctx context.Context, username, password strin
 		return nil, 0, errInvalidLogin
 	}
 	return &user, privilegeVersion, nil
-}
-
-// cabut session di backend, hapus cookie, balik ke login
-func (h *Handler) logout(c *gin.Context) {
-	if session, ok := currentSession(c); ok {
-		if err := revokeSession(c.Request.Context(), h.DB, session.ID); err != nil {
-			c.AbortWithStatus(http.StatusInternalServerError)
-			return
-		}
-	}
-	clearSessionCookie(c, h.Config.SecureCookie)
-	c.Redirect(http.StatusSeeOther, "/login")
-}
-
-// render halaman login dengan pesan error (kosong kalau ga ada)
-func renderLogin(c *gin.Context, status int, errorMessage, username string) {
-	c.HTML(status, "login.html", gin.H{
-		"Error":    errorMessage,
-		"Username": username,
-	})
 }

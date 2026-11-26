@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -22,7 +21,7 @@ func TestConnectionAdminRoutesRejectNonAdmin(t *testing.T) {
 	database.RegisterAdminRoutes(r, service)
 	editor := testdb.Login(t, r, "editor")
 
-	for _, path := range []string{"/admin/databases", "/admin/databases/new", "/admin/databases/1/edit"} {
+	for _, path := range []string{"/api/admin/connections", "/api/admin/connections/1"} {
 		if w := testdb.Request(r, http.MethodGet, path, nil, editor); w.Code != http.StatusForbidden {
 			t.Errorf("GET %s oleh user biasa: dapat %d, harusnya 403", path, w.Code)
 		}
@@ -44,11 +43,8 @@ func TestConnectionTestFailureHidesCredentials(t *testing.T) {
 	r := f.Router(t)
 	database.RegisterAdminRoutes(r, service)
 	cookie := testdb.Login(t, r, "admin")
-	page := testdb.Request(r, http.MethodGet, "/admin/databases/1/edit", nil, cookie)
-	form := url.Values{"csrf_token": {testdb.Token(t, page.Body.String())}}
-
-	w := testdb.Request(r, http.MethodPost, "/admin/databases/1/test", form, cookie)
-	if w.Code == http.StatusSeeOther || w.Code < 400 {
+	w := apiRequest(r, http.MethodPost, "/api/admin/connections/1/test", "", testdb.CSRF(t, r, cookie), cookie)
+	if w.Code < 400 {
 		t.Fatalf("uji koneksi password salah: dapat %d, harusnya gagal", w.Code)
 	}
 	if strings.Contains(w.Body.String(), input.Password) {

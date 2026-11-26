@@ -23,46 +23,8 @@ func newSPARouter(t *testing.T) *gin.Engine {
 	os.WriteFile(filepath.Join(dir, "assets", "app.js"), []byte("console.log(1)"), 0o644)
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.Use(api.SPA(dir))
 	r.NoRoute(api.NoRoute(dir))
 	return r
-}
-
-// TestSPAOverridesLegacyGETRoutes memastikan login dan halaman lama membuka SPA setelah build.
-func TestSPAOverridesLegacyGETRoutes(t *testing.T) {
-	r := newSPARouter(t)
-	legacyCalls := 0
-	for _, target := range []string{"/", "/login", "/databases", "/admin/groups"} {
-		r.GET(target, func(c *gin.Context) {
-			legacyCalls++
-			c.String(http.StatusOK, "legacy")
-		})
-		if w := serve(r, "GET", target); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "root") {
-			t.Fatalf("%s harus SPA, dapat %d %q", target, w.Code, w.Body.String())
-		}
-	}
-	if legacyCalls != 0 {
-		t.Fatalf("handler HTML lama terpanggil %d kali", legacyCalls)
-	}
-	r.GET("/api/protected", func(c *gin.Context) { api.Fail(c, 401, "unauthenticated", "Login diperlukan.", nil) })
-	r.GET("/static/app.css", func(c *gin.Context) { c.String(200, "legacy-css") })
-	if w := serve(r, "GET", "/api/protected"); w.Code != 401 || !strings.Contains(w.Body.String(), "unauthenticated") {
-		t.Fatalf("middleware SPA melewati proteksi API: %d %s", w.Code, w.Body.String())
-	}
-	if w := serve(r, "GET", "/static/app.css"); w.Code != 200 || w.Body.String() != "legacy-css" {
-		t.Fatalf("asset M1 harus tetap tersedia: %d %s", w.Code, w.Body.String())
-	}
-}
-
-// TestSPANoBuildKeepsLegacyRoutes memastikan development tanpa build tetap bisa memakai handler lama.
-func TestSPANoBuildKeepsLegacyRoutes(t *testing.T) {
-	r := gin.New()
-	r.Use(api.SPA(t.TempDir()))
-	r.NoRoute(api.NoRoute(""))
-	r.GET("/login", func(c *gin.Context) { c.String(200, "legacy") })
-	if w := serve(r, "GET", "/login"); w.Code != 200 || w.Body.String() != "legacy" {
-		t.Fatalf("tanpa build harus memakai handler lama: %d %s", w.Code, w.Body.String())
-	}
 }
 
 func serve(r *gin.Engine, method, target string) *httptest.ResponseRecorder {

@@ -33,11 +33,11 @@ func statusOf(r *gin.Engine) (int, string) {
 	return w.Code, w.Header().Get("Location")
 }
 
-// cek RequireLogin: belum login diarahkan ke /login, sudah login lolos
+// cek RequireLogin: belum login dapat 401 tanpa redirect, sudah login lolos
 func TestRequireLogin(t *testing.T) {
 	code, location := statusOf(newTestRouter(nil, RequireLogin()))
-	if code != http.StatusSeeOther || location != "/login" {
-		t.Errorf("belum login: dapat %d ke %q, harusnya 303 ke /login", code, location)
+	if code != http.StatusUnauthorized || location != "" {
+		t.Errorf("belum login: dapat %d ke %q, harusnya 401 tanpa redirect", code, location)
 	}
 
 	code, _ = statusOf(newTestRouter(&User{ID: 1}, RequireLogin()))

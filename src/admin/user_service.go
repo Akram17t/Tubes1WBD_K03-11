@@ -8,9 +8,11 @@ import (
 	"strings"
 
 	"tubes-wbd/src/auth"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// Error dari service user, handler HTML dan JSON yang nerjemahin ke status HTTP masing-masing.
+// Error dari service user, handler JSON yang nerjemahin ke status HTTP masing-masing.
 var (
 	errUserNotFound   = errors.New("user tidak ditemukan")
 	errUsernameTaken  = errors.New("username sudah dipakai")
@@ -23,7 +25,7 @@ type validationError struct{ msg string }
 
 func (e validationError) Error() string { return e.msg }
 
-// userRecord satu baris user, dipakai handler HTML maupun JSON.
+// userRecord satu baris user yang dikirim API admin.
 type userRecord struct {
 	ID              int64
 	Username        string
@@ -54,7 +56,7 @@ type userService struct {
 	db *sql.DB
 }
 
-// ambil daftar user urut username. limit < 0 artinya ambil semua (dipakai halaman HTML lama).
+// ambil daftar user urut username. limit < 0 artinya ambil semua.
 // hasMore true kalau masih ada data setelah halaman ini
 func (s userService) list(ctx context.Context, limit, offset int) ([]userRecord, bool, error) {
 	var sqlLimit sql.NullInt64
@@ -262,4 +264,15 @@ func validatePassword(password string) error {
 		return validationError{fmt.Sprintf("password harus %d sampai %d karakter", minPasswordLength, maxPasswordLength)}
 	}
 	return nil
+}
+
+const (
+	minPasswordLength = 8
+	maxPasswordLength = 72 // batas wajar biar hashing ga dipakai buat bikin server berat
+)
+
+// cek error dari postgres karena nabrak UNIQUE (kode 23505)
+func isDuplicate(err error) bool {
+	pgErr, ok := errors.AsType[*pgconn.PgError](err)
+	return ok && pgErr.Code == "23505"
 }

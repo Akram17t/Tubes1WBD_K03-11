@@ -41,7 +41,7 @@ func TestNoRotationBeforeInterval(t *testing.T) {
 	insertUserWithPassword(t, db, "editor", "rahasia123")
 	cookie := loginAs(t, r, "editor", "rahasia123")
 
-	w := send(r, http.MethodGet, "/databases", nil, cookie)
+	w := send(r, http.MethodGet, protectedPath, nil, cookie)
 	if w.Code != http.StatusOK || sessionCookieFrom(w) != nil {
 		t.Errorf("belum waktunya rotasi: dapat %d, cookie baru %v", w.Code, sessionCookieFrom(w))
 	}
@@ -59,7 +59,7 @@ func TestPeriodicRotation(t *testing.T) {
 	db.QueryRow(`SELECT absolute_expires_at FROM sessions`).Scan(&absoluteBefore)
 
 	makeRotationDue(t, db)
-	w := send(r, http.MethodGet, "/databases", nil, oldCookie)
+	w := send(r, http.MethodGet, protectedPath, nil, oldCookie)
 	newCookie := sessionCookieFrom(w)
 	if w.Code != http.StatusOK || newCookie == nil || newCookie.Value == oldCookie.Value {
 		t.Fatalf("rotasi: dapat %d, harusnya 200 dengan cookie baru", w.Code)
@@ -74,17 +74,17 @@ func TestPeriodicRotation(t *testing.T) {
 	}
 
 	// token lama masih dalam grace: diterima, dan ga bikin rotasi lagi
-	w = send(r, http.MethodGet, "/databases", nil, oldCookie)
+	w = send(r, http.MethodGet, protectedPath, nil, oldCookie)
 	if w.Code != http.StatusOK || sessionCookieFrom(w) != nil {
 		t.Errorf("token lama dalam grace: dapat %d, harusnya 200 tanpa cookie baru", w.Code)
 	}
 
 	// grace habis: token lama ditolak, token baru tetap jalan
 	expireGrace(t, db)
-	if w := send(r, http.MethodGet, "/databases", nil, oldCookie); w.Code != http.StatusSeeOther {
+	if w := send(r, http.MethodGet, protectedPath, nil, oldCookie); w.Code != http.StatusUnauthorized {
 		t.Errorf("token lama setelah grace: dapat %d, harusnya 303 ke /login", w.Code)
 	}
-	if w := send(r, http.MethodGet, "/databases", nil, newCookie); w.Code != http.StatusOK {
+	if w := send(r, http.MethodGet, protectedPath, nil, newCookie); w.Code != http.StatusOK {
 		t.Errorf("token baru: dapat %d, harusnya 200", w.Code)
 	}
 }
@@ -98,7 +98,7 @@ func TestRotationCleansExpiredTokens(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		makeRotationDue(t, db)
-		cookie = sessionCookieFrom(send(r, http.MethodGet, "/databases", nil, cookie))
+		cookie = sessionCookieFrom(send(r, http.MethodGet, protectedPath, nil, cookie))
 		if cookie == nil {
 			t.Fatalf("rotasi ke-%d ga ngasih cookie baru", i+1)
 		}
@@ -129,7 +129,7 @@ func TestRotationOnPrivilegeChange(t *testing.T) {
 	}
 	tx.Commit()
 
-	w := send(r, http.MethodGet, "/databases", nil, cookie)
+	w := send(r, http.MethodGet, protectedPath, nil, cookie)
 	if w.Code != http.StatusOK || sessionCookieFrom(w) == nil {
 		t.Fatalf("privilege naik: dapat %d, harusnya 200 dengan cookie baru", w.Code)
 	}
@@ -159,7 +159,7 @@ func TestConcurrentRotation(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			w := send(r, http.MethodGet, "/databases", nil, cookie)
+			w := send(r, http.MethodGet, protectedPath, nil, cookie)
 			mu.Lock()
 			defer mu.Unlock()
 			if w.Code != http.StatusOK {

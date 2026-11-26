@@ -31,13 +31,8 @@ func TestGroupAPIUsesSharedServicesAndResponses(t *testing.T) {
 	memberID := insertUser(t, db, "member", false)
 	groupID := insertGroup(t, db, "Developer")
 	databaseID := insertConnection(t, db, "Target API", adminID)
-	admin, member := login(r, "admin"), login(r, "member")
-	page := send(r, http.MethodGet, "/admin/groups/new", nil, admin)
-	match := csrfPattern.FindStringSubmatch(page.Body.String())
-	if len(match) != 2 {
-		t.Fatal("token CSRF tidak tersedia")
-	}
-	token := match[1]
+	adminSession, memberSession := apiLogin(t, r, "admin"), apiLogin(t, r, "member")
+	admin, member, token := adminSession.cookie, memberSession.cookie, adminSession.csrf
 	path := "/api/admin/groups/" + idString(groupID)
 	for _, tc := range []struct {
 		method, path, body, csrf string

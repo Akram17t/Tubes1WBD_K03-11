@@ -93,14 +93,6 @@ func (r groupRepository) membersPage(ctx context.Context, id int64, limit, offse
 		WHERE ug.group_id = $1 ORDER BY u.username, u.id LIMIT $2 OFFSET $3`, id, limit, offset)
 }
 
-// availableUsers mengambil user yang belum menjadi anggota group.
-func (r groupRepository) availableUsers(ctx context.Context, id int64) ([]GroupMember, error) {
-	return r.users(ctx, `
-		SELECT u.id, u.username, u.display_name, u.is_active FROM users u
-		WHERE NOT EXISTS (SELECT 1 FROM user_groups ug WHERE ug.user_id = u.id AND ug.group_id = $1)
-		ORDER BY u.username, u.id`, id)
-}
-
 // users membaca hasil query anggota atau calon anggota ke bentuk GroupMember.
 func (r groupRepository) users(ctx context.Context, query string, args ...any) ([]GroupMember, error) {
 	rows, err := r.db.QueryContext(ctx, query, args...)

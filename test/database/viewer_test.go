@@ -3,10 +3,9 @@ package database_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
-	"html"
 	"net/url"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -79,6 +78,7 @@ func TestViewerMetadataAndPagination(t *testing.T) {
 	}
 }
 
+// izin dicek sebelum target dibuka; identifier aneh dan schema kosong aman lewat API viewer
 func TestViewerRoutesPermissionsAndEscapedIdentifiers(t *testing.T) {
 	f := testdb.New(t)
 	calls := 0
@@ -91,51 +91,44 @@ func TestViewerRoutesPermissionsAndEscapedIdentifiers(t *testing.T) {
 	viewer := testdb.Login(t, r, "viewer")
 	for _, username := range []string{"outsider", "admin"} {
 		cookie := testdb.Login(t, r, username)
-		if w := testdb.Request(r, "GET", "/databases/1/schema", nil, cookie); w.Code != 403 {
+		if w := testdb.Request(r, "GET", "/api/databases/1/schemas", nil, cookie); w.Code != 403 {
 			t.Fatalf("%s: dapat %d", username, w.Code)
 		}
 	}
 	if calls != 0 {
 		t.Fatal("target dibuka sebelum cek izin")
 	}
-	if w := testdb.Request(r, "GET", "/databases/1/schema", nil, nil); w.Code != 303 {
-		t.Fatal("viewer tanpa login harus diarahkan ke login")
-	}
-	for _, path := range []string{"/databases/1", "/databases/1/schema?table=players", "/databases/1/tables/players/data?limit=50&offset=50"} {
-		w := testdb.Request(r, "GET", path, nil, viewer)
-		if w.Code != 200 || !strings.Contains(w.Body.String(), "Logout") {
-			t.Fatalf("%s: %d %s", path, w.Code, w.Body.String())
-		}
-	}
-	for _, path := range []string{"/databases/0/schema", "/databases/abc/schema", "/databases/1/tables/players/data?limit=no", "/databases/1/tables/players/data?limit=501", "/databases/1/tables/players/data?offset=-1"} {
+	for _, path := range []string{"/api/databases/1/data?table=players&limit=no", "/api/databases/1/data?table=players&limit=501"} {
 		if w := testdb.Request(r, "GET", path, nil, viewer); w.Code != 400 {
 			t.Fatalf("%s: harus 400, dapat %d", path, w.Code)
 		}
 	}
-	for _, path := range []string{"/databases/1/schema?schema=missing", "/databases/1/tables/missing/data"} {
+	// ID path yang ga valid dianggap resource ga ada, sama kayak endpoint API lain
+	for _, path := range []string{"/api/databases/0/schemas", "/api/databases/abc/schemas", "/api/databases/1/tables?schema=missing"} {
 		if w := testdb.Request(r, "GET", path, nil, viewer); w.Code != 404 {
 			t.Fatalf("%s: harus 404, dapat %d", path, w.Code)
 		}
 	}
 	testdb.Exec(t, f.Target, `CREATE TABLE public."odd/table""name" (value text); INSERT INTO public."odd/table""name" VALUES ('<script>alert(1)</script>')`)
-	path := "/databases/1/tables/" + url.PathEscape("odd/table\"name") + "/data"
-	w := testdb.Request(r, "GET", path, nil, viewer)
-	if w.Code != 200 || strings.Contains(w.Body.String(), "<script>alert") || !strings.Contains(w.Body.String(), "&lt;script&gt;") {
-		t.Fatalf("nama tabel ter-escape: %d %s", w.Code, w.Body.String())
+	w := testdb.Request(r, "GET", "/api/databases/1/data?"+url.Values{"table": {"odd/table\"name"}}.Encode(), nil, viewer)
+	var data struct{ Data database.TableData }
+	if err := json.Unmarshal(w.Body.Bytes(), &data); err != nil || w.Code != 200 || len(data.Data.Rows) != 1 || data.Data.Rows[0][0] != "<script>alert(1)</script>" {
+		t.Fatalf("tabel dengan nama aneh: %d %s", w.Code, w.Body.String())
 	}
 	testdb.Exec(t, f.Target, `DROP SCHEMA IF EXISTS empty_schema; CREATE SCHEMA empty_schema`)
-	w = testdb.Request(r, "GET", "/databases/1/schema?schema=empty_schema", nil, viewer)
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "Tidak ada tabel") {
-		t.Fatal("schema kosong tidak ditangani")
+	w = testdb.Request(r, "GET", "/api/databases/1/tables?schema=empty_schema", nil, viewer)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"data":[]`) {
+		t.Fatalf("schema kosong tidak ditangani: %d %s", w.Code, w.Body.String())
 	}
 	r2 := f.Router(t)
 	database.RegisterRoutes(r2, f.Platform, nil)
 	cookie := testdb.Login(t, r2, "viewer")
-	if w := testdb.Request(r2, "GET", "/databases/1/schema", nil, cookie); w.Code != 503 {
+	if w := testdb.Request(r2, "GET", "/api/databases/1/schemas", nil, cookie); w.Code != 503 {
 		t.Fatalf("provider belum ada: %d", w.Code)
 	}
 }
 
+// nilai JSON/binary/NULL dikirim apa adanya, dan nama tabel aneh tetap bisa dipaginasi lewat API
 func TestViewerJSONAndGeneratedTableLinks(t *testing.T) {
 	f := testdb.New(t)
 	ctx := context.Background()
@@ -153,21 +146,15 @@ func TestViewerJSONAndGeneratedTableLinks(t *testing.T) {
 	r := f.Router(t)
 	database.RegisterRoutes(r, f.Platform, f.Provider)
 	cookie := testdb.Login(t, r, "viewer")
-	page := testdb.Request(r, "GET", "/databases/1/schema?"+url.Values{"table": {name}}.Encode(), nil, cookie)
-	if page.Code != 200 {
-		t.Fatalf("schema: %d %s", page.Code, page.Body.String())
-	}
-	for _, label := range []string{"Lihat data", "Berikutnya"} {
-		link := regexp.MustCompile(`href="([^"]+)"[^>]*>` + label + `</a>`).FindStringSubmatch(page.Body.String())
-		if link == nil {
-			t.Fatalf("tautan %s tidak ditemukan", label)
-		}
-		page = testdb.Request(r, "GET", html.UnescapeString(link[1]), nil, cookie)
-		if page.Code != 200 {
-			t.Fatalf("tautan %s rusak: %d %s", label, page.Code, page.Body.String())
-		}
-		if label == "Lihat data" && (!strings.Contains(html.UnescapeString(page.Body.String()), `{"a": 1}`) || !strings.Contains(page.Body.String(), "&lt;script&gt;") || strings.Contains(page.Body.String(), "<script>alert")) {
-			t.Fatal("JSON tidak ditampilkan sebagai teks yang aman")
+	for _, tc := range []struct {
+		offset  string
+		rows    int
+		hasMore bool
+	}{{"0", 50, true}, {"50", 1, false}} {
+		w := testdb.Request(r, "GET", "/api/databases/1/data?"+url.Values{"table": {name}, "offset": {tc.offset}}.Encode(), nil, cookie)
+		var body struct{ Data database.TableData }
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || w.Code != 200 || len(body.Data.Rows) != tc.rows || body.Data.HasMore != tc.hasMore {
+			t.Fatalf("offset %s: %d %s", tc.offset, w.Code, w.Body.String())
 		}
 	}
 }
