@@ -1,4 +1,4 @@
-// Command benchmark prepares and measures an isolated target dataset for M2.
+// Command benchmark menyiapkan dataset terpisah dan mengukur durasi UPDATE untuk M2.
 package main
 
 import (
@@ -34,6 +34,7 @@ type result struct {
 	OverOneSecond bool              `json:"over_one_second"`
 }
 
+// main membaca mode benchmark dan menghentikan proses kalau pengukuran gagal.
 func main() {
 	action := flag.String("action", "run", "generate, reset, or run")
 	rows := flag.Int64("rows", 1_000_000, "rows for generate (1..100000000)")
@@ -46,6 +47,7 @@ func main() {
 	}
 }
 
+// validate membatasi mode, jumlah row, dan nama database khusus benchmark.
 func validate(action string, rows int64, database string) error {
 	if action != "generate" && action != "reset" && action != "run" {
 		return errors.New("action must be generate, reset, or run")
@@ -59,6 +61,7 @@ func validate(action string, rows int64, database string) error {
 	return nil
 }
 
+// run membuat atau mereset dataset, atau menjalankan UPDATE dan mencatat hasil pengukuran.
 func run(ctx context.Context, action string, rows int64) error {
 	dsn := os.Getenv("BENCHMARK_DATABASE_URL")
 	if dsn == "" {
@@ -107,7 +110,7 @@ func run(ctx context.Context, action string, rows int64) error {
 			return err
 		}
 	}
-	// Hold the lock through verification and commit so another writer cannot corrupt the measurement.
+	// Tahan lock sampai verifikasi dan commit agar proses lain tidak mengubah data saat diukur.
 	if _, err := tx.Exec(ctx, "LOCK TABLE public.batch_demo IN ACCESS EXCLUSIVE MODE"); err != nil {
 		return err
 	}
@@ -138,7 +141,7 @@ func run(ctx context.Context, action string, rows int64) error {
 		r.OverOneSecond = r.UpdateMS > 1000
 		expectedValue = 1
 	} else {
-		// Rebuild instead of UPDATE-to-zero so reset also removes dead tuples from the previous run.
+		// Bangun ulang dataset agar reset juga membuang dead tuple dari pengukuran sebelumnya.
 		if _, err := tx.Exec(ctx, "TRUNCATE TABLE public.batch_demo"); err != nil {
 			return err
 		}
@@ -174,6 +177,7 @@ func run(ctx context.Context, action string, rows int64) error {
 	return nil
 }
 
+// verify memeriksa jumlah row, nilai, dan rentang ID sebelum transaction di-commit.
 func verify(ctx context.Context, tx pgx.Tx, rows, value int64) error {
 	var count, matching, minID, maxID int64
 	err := tx.QueryRow(ctx, `SELECT count(*), count(*) FILTER (WHERE value = $1),

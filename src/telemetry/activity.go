@@ -9,7 +9,8 @@ import (
 	"go.opentelemetry.io/otel/codes"
 )
 
-// StartActivity traces a service operation. Finish only receives safe IDs/flags, never input text or raw errors.
+// StartActivity membuat span dan pencatat hasil operasi service.
+// Field tambahan hanya berisi ID atau penanda aman, bukan teks input atau pesan error mentah.
 func StartActivity(ctx context.Context, event string, attrs ...attribute.KeyValue) (context.Context, func(error, ...attribute.KeyValue)) {
 	ctx, span := Tracer().Start(ctx, event)
 	span.SetAttributes(attrs...)
@@ -24,7 +25,7 @@ func StartActivity(ctx context.Context, event string, attrs ...attribute.KeyValu
 		status, level := "success", slog.LevelInfo
 		if err != nil {
 			status, level = "error", slog.LevelWarn
-			// Driver/validator errors can contain credentials, SQL literals, or user input.
+			// Error driver atau validator bisa memuat credential, literal SQL, atau input pengguna.
 			span.SetStatus(codes.Error, "Operation failed")
 		} else {
 			span.SetStatus(codes.Ok, "")

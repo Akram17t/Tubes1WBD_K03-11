@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
+// TestActivityRecordsOutcomeWithoutRawErrors memeriksa korelasi log/span dan penyamaran error.
 func TestActivityRecordsOutcomeWithoutRawErrors(t *testing.T) {
 	for _, failed := range []bool{false, true} {
 		t.Run(fmt.Sprint(failed), func(t *testing.T) {

@@ -18,6 +18,12 @@ var (
 	ErrApprovalIncomplete  = errors.New("persetujuan group belum lengkap")
 )
 
+// approvalIncompleteError membawa ID group pending dari snapshot request yang sudah diperiksa izinnya.
+type approvalIncompleteError struct{ pendingGroupIDs []string }
+
+func (e *approvalIncompleteError) Error() string { return ErrApprovalIncomplete.Error() }
+func (e *approvalIncompleteError) Unwrap() error { return ErrApprovalIncomplete }
+
 type RequestInput struct {
 	MigrationID       int64  `json:"migration_id,string"`
 	Revision          int    `json:"revision"`
@@ -521,15 +527,30 @@ func checkLockedRequestApproval(ctx context.Context, tx *sql.Tx, request *Migrat
 		request.Snapshot.MigrationID != request.MigrationID || request.Snapshot.DatabaseID != request.DatabaseID {
 		return nil, ErrConflict
 	}
-	var complete bool
-	err := tx.QueryRowContext(ctx, `SELECT
-		EXISTS (SELECT 1 FROM migration_approvals WHERE request_id = $1) AND
-		NOT EXISTS (SELECT 1 FROM migration_approvals WHERE request_id = $1 AND approved_by IS NULL)`, request.ID).Scan(&complete)
+	rows, err := tx.QueryContext(ctx, `SELECT group_id::text, approved_by IS NOT NULL
+		FROM migration_approvals WHERE request_id = $1 ORDER BY group_id`, request.ID)
 	if err != nil {
 		return nil, err
 	}
-	if request.ReviewStatus != "approved" || !complete {
-		return nil, ErrApprovalIncomplete
+	defer rows.Close()
+	pendingGroupIDs := []string{}
+	groups := 0
+	for rows.Next() {
+		var groupID string
+		var approved bool
+		if err := rows.Scan(&groupID, &approved); err != nil {
+			return nil, err
+		}
+		groups++
+		if !approved {
+			pendingGroupIDs = append(pendingGroupIDs, groupID)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if request.ReviewStatus != "approved" || groups == 0 || len(pendingGroupIDs) != 0 {
+		return nil, &approvalIncompleteError{pendingGroupIDs: pendingGroupIDs}
 	}
 	return request, nil
 }

@@ -2,6 +2,7 @@ package main
 
 import "testing"
 
+// TestValidate memastikan benchmark menolak database lain dan parameter di luar batas.
 func TestValidate(t *testing.T) {
 	for _, tc := range []struct {
 		action, database string

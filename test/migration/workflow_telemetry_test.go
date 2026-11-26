@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
+// captureActivities menampung log dan span selama test lalu mengembalikan logger/tracer semula.
 func captureActivities(t *testing.T) (*bytes.Buffer, *tracetest.SpanRecorder) {
 	t.Helper()
 	var logs bytes.Buffer
@@ -35,6 +36,7 @@ func captureActivities(t *testing.T) (*bytes.Buffer, *tracetest.SpanRecorder) {
 	return &logs, recorder
 }
 
+// activityEntry mencari satu event request dan mencocokkan status serta ID span-nya.
 func activityEntry(t *testing.T, logs *bytes.Buffer, recorder *tracetest.SpanRecorder, event, status, requestID string) map[string]any {
 	t.Helper()
 	var found map[string]any
@@ -69,6 +71,7 @@ func activityEntry(t *testing.T, logs *bytes.Buffer, recorder *tracetest.SpanRec
 	return nil
 }
 
+// TestWorkflowActivitiesRecordCommittedAndRejectedActions memeriksa log aksi workflow yang berhasil dan ditolak.
 func TestWorkflowActivitiesRecordCommittedAndRejectedActions(t *testing.T) {
 	logs, spans := captureActivities(t)
 	f, path := newWorkflowFixture(t)
@@ -101,9 +104,10 @@ func TestWorkflowActivitiesRecordCommittedAndRejectedActions(t *testing.T) {
 	}
 }
 
+// TestGroupActivitiesRecordCommitAndRollbackWithoutInputText memeriksa hasil perubahan group tanpa membocorkan input.
 func TestGroupActivitiesRecordCommitAndRollbackWithoutInputText(t *testing.T) {
 	f := newDefinitionFixture(t)
-	// Fixture inserts group IDs explicitly; move the sequence before testing create.
+	// Fixture mengisi ID group secara eksplisit, jadi sesuaikan sequence sebelum menguji create.
 	testdb.Exec(t, f.Platform, `SELECT setval(pg_get_serial_sequence('groups','id'),2,true)`)
 	admin.RegisterRoutes(f.router, f.Platform)
 	adminSession := f.login(t, "admin")
@@ -122,7 +126,7 @@ func TestGroupActivitiesRecordCommitAndRollbackWithoutInputText(t *testing.T) {
 	}{
 		{"POST", "/members", `{"user_id":"3"}`, "admin.group.member.add", "success", 201},
 		{"PATCH", "", `{"leader_user_id":"3"}`, "admin.group.leader.set", "success", 200},
-		// Label update must roll back if leader validation fails in the same transaction.
+		// Perubahan label harus ikut rollback jika validasi leader gagal dalam transaction yang sama.
 		{"PATCH", "", `{"name":"private-rollback-label","leader_user_id":"2"}`, "admin.group.leader.set", "error", 400},
 		{"PATCH", "", `{"description":"private-new-description"}`, "admin.group.update", "success", 200},
 		{"PUT", "/access/1", `{"access_level":"edit"}`, "admin.group.access.save", "success", 200},

@@ -13,7 +13,7 @@ import (
 	testdb "tubes-wbd/test/database"
 )
 
-// Pakai validator definisi nyata dan API bersesi; queue/worker diuji oleh pemilik engine.
+// newWorkflowFixture menyiapkan API bersesi dan request draft dengan validator definisi nyata.
 func newWorkflowFixture(t *testing.T) (*definitionFixture, string) {
 	t.Helper()
 	f := newDefinitionFixture(t)
@@ -24,6 +24,7 @@ func newWorkflowFixture(t *testing.T) (*definitionFixture, string) {
 	return f, "/api/databases/1/requests/" + request["id"].(string)
 }
 
+// workflowDetail membaca detail request melalui API dan memeriksa bentuk JSON-nya.
 func workflowDetail(t *testing.T, f *definitionFixture, session apiSession, path string) migration.RequestDetail {
 	t.Helper()
 	var detail migration.RequestDetail
@@ -34,10 +35,11 @@ func workflowDetail(t *testing.T, f *definitionFixture, session apiSession, path
 	return detail
 }
 
+// TestWorkflowAPIApprovalBeforeExecute memeriksa approval parsial dan batas izin leader View.
 func TestWorkflowAPIApprovalBeforeExecute(t *testing.T) {
 	f, path := newWorkflowFixture(t)
 	f.call(t, f.editor, "POST", path+"/submit", "", 200, "")
-	f.call(t, f.editor, "POST", path+"/approve", "", 200, "") // self-approval
+	f.call(t, f.editor, "POST", path+"/approve", "", 200, "") // pengaju boleh menyetujui untuk group-nya
 	detail := workflowDetail(t, f, f.viewer, path)
 	if detail.ReviewStatus != "pending_review" || !reflect.DeepEqual(detail.PendingGroupIDs, []string{"2"}) ||
 		!detail.CanApprove || !slices.Contains(detail.AllowedActions, "approve") {
@@ -60,6 +62,7 @@ func TestWorkflowAPIApprovalBeforeExecute(t *testing.T) {
 	}
 }
 
+// TestWorkflowOneLeaderApprovesAllRepresentedGroups memastikan satu klik mengisi semua group yang dipimpin.
 func TestWorkflowOneLeaderApprovesAllRepresentedGroups(t *testing.T) {
 	f, path := newWorkflowFixture(t)
 	testdb.Exec(t, f.Platform, `INSERT INTO user_groups(user_id,group_id) VALUES (1,2);
@@ -86,6 +89,7 @@ func TestWorkflowOneLeaderApprovesAllRepresentedGroups(t *testing.T) {
 	}
 }
 
+// TestWorkflowMissingLeaderWaitsForReplacement memastikan group tanpa leader tetap menahan approval.
 func TestWorkflowMissingLeaderWaitsForReplacement(t *testing.T) {
 	f, path := newWorkflowFixture(t)
 	testdb.Exec(t, f.Platform, `UPDATE groups SET leader_user_id=NULL WHERE id=2`)
@@ -110,6 +114,7 @@ func TestWorkflowMissingLeaderWaitsForReplacement(t *testing.T) {
 	}
 }
 
+// TestWorkflowDuplicateApprovePreservesSignatures memastikan approve berulang tidak menimpa tanda tangan lama.
 func TestWorkflowDuplicateApprovePreservesSignatures(t *testing.T) {
 	f, path := newWorkflowFixture(t)
 	f.call(t, f.editor, "POST", path+"/submit", "", 200, "")
@@ -131,6 +136,7 @@ func TestWorkflowDuplicateApprovePreservesSignatures(t *testing.T) {
 	}
 }
 
+// TestWorkflowCancelBeforeEnqueue memeriksa penarikan request oleh pengaju sebelum job dibuat.
 func TestWorkflowCancelBeforeEnqueue(t *testing.T) {
 	for _, state := range []string{"draft", "pending_review", "approved"} {
 		t.Run(state, func(t *testing.T) {
@@ -163,6 +169,7 @@ func TestWorkflowCancelBeforeEnqueue(t *testing.T) {
 	}
 }
 
+// TestWorkflowCannotCancelPersistedJob memastikan request yang sudah punya job tidak dapat ditarik.
 func TestWorkflowCannotCancelPersistedJob(t *testing.T) {
 	f, path := newWorkflowFixture(t)
 	f.call(t, f.editor, "POST", path+"/submit", "", 200, "")
@@ -181,6 +188,7 @@ func TestWorkflowCannotCancelPersistedJob(t *testing.T) {
 	}
 }
 
+// TestWorkflowRejectsCrossDatabaseIDs memastikan ID dari database lain tidak membocorkan atau mengubah request.
 func TestWorkflowRejectsCrossDatabaseIDs(t *testing.T) {
 	f, path := newWorkflowFixture(t)
 	f.call(t, f.editor, "POST", path+"/submit", "", 200, "")
@@ -199,6 +207,7 @@ func TestWorkflowRejectsCrossDatabaseIDs(t *testing.T) {
 	}
 }
 
+// TestWorkflowRejectsStaleRevision memastikan revisi basi ditolak tanpa mengubah snapshot atau slot approval.
 func TestWorkflowRejectsStaleRevision(t *testing.T) {
 	f, path := newWorkflowFixture(t)
 	f.call(t, f.editor, "POST", "/api/databases/1/requests",
@@ -212,6 +221,7 @@ func TestWorkflowRejectsStaleRevision(t *testing.T) {
 	}
 }
 
+// TestWorkflowApprovalCheckRejectsWrongRevision memeriksa revisi approved tanpa menutup transaction caller.
 func TestWorkflowApprovalCheckRejectsWrongRevision(t *testing.T) {
 	f, path := newWorkflowFixture(t)
 	f.call(t, f.editor, "POST", path+"/submit", "", 200, "")
@@ -232,6 +242,7 @@ func TestWorkflowApprovalCheckRejectsWrongRevision(t *testing.T) {
 	}
 }
 
+// TestWorkflowAPIRequiresSessionAndCSRF memastikan mutasi ditolak tanpa session atau token CSRF yang valid.
 func TestWorkflowAPIRequiresSessionAndCSRF(t *testing.T) {
 	f, path := newWorkflowFixture(t)
 	f.call(t, apiSession{}, "GET", path, "", 401, "unauthenticated")
