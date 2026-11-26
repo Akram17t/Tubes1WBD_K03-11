@@ -407,6 +407,80 @@ Test frontend (fungsi bantu SPA dan mock API untuk development) dijalankan terpi
 cd frontend && npm ci && npm test
 ```
 
+### Benchmark dataset dan migration batch
+
+Pengujian 26 November 2026 memakai dataset `public.batch_demo` dengan ID 1–1.000.000 dan nilai awal nol. UPDATE biasa diukur terlebih dahulu, kemudian dataset yang sama direset ke nol dan diproses melalui API → approval dua leader → queue → worker, dengan batch size 10.000.
+
+| Pengukuran | Hasil |
+| --- | --- |
+| Jumlah row | 1.000.000 |
+| UPDATE seluruh row tanpa batch | 3.979,943 ms (>1 detik) |
+| Waktu HTTP enqueue batch | 94 ms |
+| Waktu wall dari enqueue sampai verifikasi | 25,516 detik |
+| Batch committed | 100 |
+| Verifikasi target | 1.000.000 row tepat bernilai 1, ID tetap 1–1.000.000 |
+
+[Bukti benchmark batch](docs/benchmarks/batch-benchmark.json) menyimpan pengukuran normal, response job, sampel progress, dan verifikasi target. [Baseline normal terdahulu](docs/benchmarks/normal-2026-11-26.json) tetap tersedia terpisah. Pengukuran batch ini memakai Windows 11, i7-13650HX, RAM terlihat sekitar 12 GB, SSD SN740, PostgreSQL 18.6, dan Go 1.26.0, dengan console tracing/log info aktif. Persiapan fixture lain berjalan pada mesin yang sama; hasil ini bukan perbandingan performa yang terisolasi. Waktu wall juga mencakup polling/verifikasi. Batch lebih lambat pada workload ini karena scope persisten, banyak transaction, ledger, dan instrumentasi; manfaat yang dibuktikan adalah eksekusi asynchronous serta progress, bukan bahwa batching selalu lebih cepat.
+
+Untuk mengulang, buat database khusus `wbd_batch_benchmark` dan set `BENCHMARK_DATABASE_URL` ke database itu. Generator membatasi nama database tersebut dan membangun ulang tabel `public.batch_demo`; jangan menyimpan data lain di tabel itu.
+
+```powershell
+$env:BENCHMARK_DATABASE_URL='postgres://postgres:postgres@localhost:5432/wbd_batch_benchmark?sslmode=disable'
+go run ./scripts/benchmark -action generate -rows 1000000
+go run ./scripts/benchmark -action run
+go run ./scripts/benchmark -action reset
+```
+
+Perintah `run` memverifikasi jumlah row dan gagal jika UPDATE tidak melebihi satu detik. Setelah `reset`, sambungkan database tersebut lewat aplikasi, beri akses kedua group, dan buat migration mode batch: schema `public`, tabel `batch_demo`, key `id`, size `10000`. SQL up/down:
+
+```sql
+UPDATE public.batch_demo SET value=value+1 WHERE id=ANY($1::bigint[]);
+-- SQL down
+UPDATE public.batch_demo SET value=value-1 WHERE id=ANY($1::bigint[]);
+```
+
+Submit, approve kedua leader, execute, dan pantau job sampai sukses. Periksa target dengan `SELECT count(*), count(*) FILTER (WHERE value=1), min(id), max(id) FROM public.batch_demo`; hasilnya harus `1000000, 1000000, 1, 1000000`.
+
+### Bonus: stress testing k6
+
+[scripts/k6/stress.js](scripts/k6/stress.js) menyiapkan migration UPDATE baru pada dua target secara bergantian, lalu submit dan meminta approval editor serta viewer sebagai leader dua group. Persiapan selesai sebelum pengukuran beban. Setiap pengguna virtual membaca daftar database/history, enqueue request approved, mengirim enqueue duplikat untuk memeriksa job ID yang sama, lalu polling sampai worker selesai. Banyak pengguna virtual berjalan bersamaan, sehingga API dan job diuji pada database yang sama maupun berbeda. HTTP 202 belum dihitung sebagai keberhasilan migration; job baru dihitung sukses setelah backend melaporkan `success`.
+
+Baseline pengujian ditetapkan 2 virtual user (VU). Beban naik 2 → 8 → 24 VU, kemudian turun ke 2 VU untuk mengamati pemulihan. Tiap fase berjalan 20 detik, dengan jeda drain 15 detik antar-fase dan think time 500 ms per iterasi. Threshold k6: API p95 <1.000 ms, error API <1%, job success >99%, seluruh check lolos, dan setiap fase menyelesaikan job. Respons HTTP yang tidak sesuai atau job yang tidak selesai sukses membuat check gagal.
+
+Gunakan dua database target khusus test dan jalankan sekali SQL berikut pada masing-masing. Delay 100 ms sengaja ditambahkan agar antrean worker dapat diamati; workload ini terpisah dari benchmark 1 juta row.
+
+```sql
+CREATE TABLE public.load_counter (id BIGINT PRIMARY KEY, value BIGINT NOT NULL);
+INSERT INTO public.load_counter VALUES (1,0);
+CREATE FUNCTION public.load_delay() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN PERFORM pg_sleep(0.1); RETURN NEW; END $$;
+CREATE TRIGGER load_delay BEFORE UPDATE ON public.load_counter
+FOR EACH ROW EXECUTE FUNCTION public.load_delay();
+```
+
+Daftarkan kedua target lewat aplikasi dan beri analyst akses View serta developer akses Edit. Gunakan akun seed editor/viewer sebagai leader, lalu nyalakan API dan worker seperti setup di atas. Install k6 dan jalankan dari root repo:
+
+```sh
+k6 run -e K6_BASE_URL=http://localhost:8080 -e K6_DATABASE_IDS=2,3 scripts/k6/stress.js
+```
+
+Ganti URL dan ID sesuai target test; kedua ID harus berbeda. Password akun seed default `demo12345`, dapat diganti lewat `K6_PASSWORD` jika kedua akun memakai password lain yang sama. Setiap run menambah migration/history dan menaikkan counter target; data tidak dihapus otomatis. Ringkasan tiap fase ditulis ke terminal.
+
+Run terakhir pada 26 November 2026 memakai backend `31ccad6`, lingkungan Windows/PostgreSQL/Go seperti benchmark di atas, dan k6 2.4.0. API, worker, database, dan k6 berbagi mesin. Worker concurrency 2, polling 100 ms, `LOG_LEVEL=warn`, dan `TRACE_EXPORTER=none`. Setup/approval serta login dikecualikan dari metric API. Total waktu termasuk setup sekitar 192,97 detik; empat fase selesai dengan 338 iterasi dan nol iterasi terputus.
+
+| Fase | VU | API p50/p95 (ms) | Request/s | Error API | Job sukses | Job/s | Queue p95 (ms) | Durasi job p95 (ms) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Normal | 2 | 5,94 / 70,34 | 15,85 | 0% | 35 | 1,75 | 130,20 | 1.370,40 |
+| Elevated | 8 | 4,44 / 15,12 | 67,98 | 0% | 132 | 6,35 | 844,90 | 405,50 |
+| Peak | 24 | 4,32 / 114,95 | 174,71 | 0% | 128 | 5,41 | 6.229,95 | 803,70 |
+| Recovery | 2 | 5,53 / 60,66 | 15,85 | 0% | 43 | 2,15 | 84,70 | 585,60 |
+
+K6 berakhir dengan exit code 0; seluruh threshold lolos dan 14.445 check berhasil tanpa kegagalan. Verifikasi database yang dibatasi pada run ini menemukan 338 job sukses, masing-masing dengan tepat satu execution sukses. Counter dua target naik 170 dan 168, total 338, sesuai jumlah job tanpa UPDATE duplikat.
+
+Pada normal, queue p95 sekitar 130 ms. Di elevated, laju penyelesaian naik ke 6,35 job/s tetapi antrean bertambah. Di peak, request mencapai 174,71/s, queue p95 naik ke 6,23 detik, dan penyelesaian turun menjadi 5,41 job/s; API p95 tetap di bawah threshold. Ini menunjukkan penumpukan pekerjaan pada konfigurasi pengujian tersebut. Di recovery, sesudah beban turun dan diberi waktu drain, queue p95 kembali 84,70 ms. Variasi mesin bersama dapat memengaruhi hasil, sehingga angka ini belum menetapkan kapasitas maksimum atau stabilitas produksi jangka panjang.
+
+Queue wait dihitung dari `queued_at` ke claim pertama (`started_at`); durasi job dari `started_at` ke `finished_at`, termasuk kemungkinan tunggu lock/finalisasi. Throughput memakai waktu fase termasuk penyelesaian iterasi terakhir, bukan durasi seluruh run seperti rate submetric bawaan k6. Request/s mencakup polling. Model pengguna yang menunggu job lalu tidur 500 ms membatasi offered load ketika job melambat. Pemulihan diamati setelah jeda drain, bukan dari perpindahan beban tanpa jeda; overhead console tracing/observability terpusat juga belum diukur saat k6.
+
 ## Built With
 
 - [Go](https://go.dev/) - Bahasa pemrograman

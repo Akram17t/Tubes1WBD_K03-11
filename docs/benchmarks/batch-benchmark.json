@@ -1,0 +1,731 @@
+{
+  "measured_at": "2026-11-26T10:56:01Z",
+  "baseline": {
+    "action": "run",
+    "measured_at": "2026-11-26T10:55:28Z",
+    "database": "wbd_batch_benchmark",
+    "postgresql": "PostgreSQL 18.6 on x86_64-windows, compiled by msvc-19.44.35228, 64-bit",
+    "client": "windows/amd64 go1.26.0",
+    "settings": {
+      "fsync": "on",
+      "full_page_writes": "on",
+      "shared_buffers": "128MB",
+      "synchronous_commit": "on"
+    },
+    "rows": 1000000,
+    "verified": true,
+    "table_bytes": 133554176,
+    "query": "UPDATE public.batch_demo SET value = value + 1",
+    "update_ms": 3979.9426,
+    "commit_ms": 0.5627,
+    "over_one_second": true
+  },
+  "batch_size": 10000,
+  "enqueue_ms": 94.0000000409782,
+  "job": {
+    "id": "1",
+    "request_id": "672",
+    "database_id": "1",
+    "migration_id": "672",
+    "revision": 1,
+    "operation": "up",
+    "status": "success",
+    "attempt_count": 1,
+    "progress": {
+      "total_rows": 1000000,
+      "committed_rows": 1000000,
+      "committed_batches": 100,
+      "reverted_rows": 0,
+      "reverted_batches": 0,
+      "last_cursor": "1000000"
+    },
+    "blocking_database": false,
+    "allowed_actions": [],
+    "status_url": "/api/databases/1/jobs/1",
+    "error": null,
+    "execution_actor_id": "2",
+    "source_job_id": null,
+    "compensation_job_id": null,
+    "queued_at": "2026-11-26T10:55:36.30114Z",
+    "next_attempt_at": null,
+    "started_at": "2026-11-26T10:55:36.417258Z",
+    "finished_at": "2026-11-26T10:56:00.814149Z",
+    "history_url": "/api/databases/1/history"
+  },
+  "samples": [
+    {
+      "elapsed_seconds": 0.031,
+      "status": "queued",
+      "progress": {
+        "total_rows": null,
+        "committed_rows": 0,
+        "committed_batches": 0,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": null
+      }
+    },
+    {
+      "elapsed_seconds": 0.266,
+      "status": "running",
+      "progress": {
+        "total_rows": null,
+        "committed_rows": 0,
+        "committed_batches": 0,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": null
+      }
+    },
+    {
+      "elapsed_seconds": 12.797,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 20000,
+        "committed_batches": 2,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "20000"
+      }
+    },
+    {
+      "elapsed_seconds": 13.031,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 30000,
+        "committed_batches": 3,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "30000"
+      }
+    },
+    {
+      "elapsed_seconds": 13.25,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 50000,
+        "committed_batches": 5,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "50000"
+      }
+    },
+    {
+      "elapsed_seconds": 13.453,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 70000,
+        "committed_batches": 7,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "70000"
+      }
+    },
+    {
+      "elapsed_seconds": 13.688,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 80000,
+        "committed_batches": 8,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "80000"
+      }
+    },
+    {
+      "elapsed_seconds": 13.906,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 100000,
+        "committed_batches": 10,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "100000"
+      }
+    },
+    {
+      "elapsed_seconds": 14.141,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 120000,
+        "committed_batches": 12,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "120000"
+      }
+    },
+    {
+      "elapsed_seconds": 14.375,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 140000,
+        "committed_batches": 14,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "140000"
+      }
+    },
+    {
+      "elapsed_seconds": 14.578,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 160000,
+        "committed_batches": 16,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "160000"
+      }
+    },
+    {
+      "elapsed_seconds": 14.813,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 180000,
+        "committed_batches": 18,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "180000"
+      }
+    },
+    {
+      "elapsed_seconds": 15.047,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 200000,
+        "committed_batches": 20,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "200000"
+      }
+    },
+    {
+      "elapsed_seconds": 15.25,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 220000,
+        "committed_batches": 22,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "220000"
+      }
+    },
+    {
+      "elapsed_seconds": 15.469,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 240000,
+        "committed_batches": 24,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "240000"
+      }
+    },
+    {
+      "elapsed_seconds": 15.688,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 260000,
+        "committed_batches": 26,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "260000"
+      }
+    },
+    {
+      "elapsed_seconds": 15.891,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 280000,
+        "committed_batches": 28,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "280000"
+      }
+    },
+    {
+      "elapsed_seconds": 16.156,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 300000,
+        "committed_batches": 30,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "300000"
+      }
+    },
+    {
+      "elapsed_seconds": 16.375,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 320000,
+        "committed_batches": 32,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "320000"
+      }
+    },
+    {
+      "elapsed_seconds": 16.609,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 340000,
+        "committed_batches": 34,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "340000"
+      }
+    },
+    {
+      "elapsed_seconds": 16.813,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 360000,
+        "committed_batches": 36,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "360000"
+      }
+    },
+    {
+      "elapsed_seconds": 17.031,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 380000,
+        "committed_batches": 38,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "380000"
+      }
+    },
+    {
+      "elapsed_seconds": 17.297,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 400000,
+        "committed_batches": 40,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "400000"
+      }
+    },
+    {
+      "elapsed_seconds": 17.547,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 420000,
+        "committed_batches": 42,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "420000"
+      }
+    },
+    {
+      "elapsed_seconds": 17.766,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 440000,
+        "committed_batches": 44,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "440000"
+      }
+    },
+    {
+      "elapsed_seconds": 17.984,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 460000,
+        "committed_batches": 46,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "460000"
+      }
+    },
+    {
+      "elapsed_seconds": 18.188,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 480000,
+        "committed_batches": 48,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "480000"
+      }
+    },
+    {
+      "elapsed_seconds": 18.406,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 500000,
+        "committed_batches": 50,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "500000"
+      }
+    },
+    {
+      "elapsed_seconds": 18.609,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 520000,
+        "committed_batches": 52,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "520000"
+      }
+    },
+    {
+      "elapsed_seconds": 18.844,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 540000,
+        "committed_batches": 54,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "540000"
+      }
+    },
+    {
+      "elapsed_seconds": 19.047,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 550000,
+        "committed_batches": 55,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "550000"
+      }
+    },
+    {
+      "elapsed_seconds": 19.266,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 570000,
+        "committed_batches": 57,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "570000"
+      }
+    },
+    {
+      "elapsed_seconds": 19.484,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 590000,
+        "committed_batches": 59,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "590000"
+      }
+    },
+    {
+      "elapsed_seconds": 19.703,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 610000,
+        "committed_batches": 61,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "610000"
+      }
+    },
+    {
+      "elapsed_seconds": 19.922,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 620000,
+        "committed_batches": 62,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "620000"
+      }
+    },
+    {
+      "elapsed_seconds": 20.156,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 640000,
+        "committed_batches": 64,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "640000"
+      }
+    },
+    {
+      "elapsed_seconds": 20.391,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 660000,
+        "committed_batches": 66,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "660000"
+      }
+    },
+    {
+      "elapsed_seconds": 20.594,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 670000,
+        "committed_batches": 67,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "670000"
+      }
+    },
+    {
+      "elapsed_seconds": 20.828,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 690000,
+        "committed_batches": 69,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "690000"
+      }
+    },
+    {
+      "elapsed_seconds": 21.063,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 710000,
+        "committed_batches": 71,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "710000"
+      }
+    },
+    {
+      "elapsed_seconds": 21.297,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 730000,
+        "committed_batches": 73,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "730000"
+      }
+    },
+    {
+      "elapsed_seconds": 21.531,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 750000,
+        "committed_batches": 75,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "750000"
+      }
+    },
+    {
+      "elapsed_seconds": 21.75,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 770000,
+        "committed_batches": 77,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "770000"
+      }
+    },
+    {
+      "elapsed_seconds": 21.969,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 780000,
+        "committed_batches": 78,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "780000"
+      }
+    },
+    {
+      "elapsed_seconds": 22.188,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 800000,
+        "committed_batches": 80,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "800000"
+      }
+    },
+    {
+      "elapsed_seconds": 22.391,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 820000,
+        "committed_batches": 82,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "820000"
+      }
+    },
+    {
+      "elapsed_seconds": 22.609,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 840000,
+        "committed_batches": 84,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "840000"
+      }
+    },
+    {
+      "elapsed_seconds": 22.813,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 860000,
+        "committed_batches": 86,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "860000"
+      }
+    },
+    {
+      "elapsed_seconds": 23.031,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 880000,
+        "committed_batches": 88,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "880000"
+      }
+    },
+    {
+      "elapsed_seconds": 23.25,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 900000,
+        "committed_batches": 90,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "900000"
+      }
+    },
+    {
+      "elapsed_seconds": 23.453,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 920000,
+        "committed_batches": 92,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "920000"
+      }
+    },
+    {
+      "elapsed_seconds": 23.656,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 940000,
+        "committed_batches": 94,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "940000"
+      }
+    },
+    {
+      "elapsed_seconds": 23.891,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 960000,
+        "committed_batches": 96,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "960000"
+      }
+    },
+    {
+      "elapsed_seconds": 24.109,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 980000,
+        "committed_batches": 98,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "980000"
+      }
+    },
+    {
+      "elapsed_seconds": 24.328,
+      "status": "running",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 990000,
+        "committed_batches": 99,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "990000"
+      }
+    },
+    {
+      "elapsed_seconds": 24.563,
+      "status": "success",
+      "progress": {
+        "total_rows": 1000000,
+        "committed_rows": 1000000,
+        "committed_batches": 100,
+        "reverted_rows": 0,
+        "reverted_batches": 0,
+        "last_cursor": "1000000"
+      }
+    }
+  ],
+  "target_verification": "1000000|1000000|1|1000000",
+  "wall_seconds": 25.516000000061467
+}
