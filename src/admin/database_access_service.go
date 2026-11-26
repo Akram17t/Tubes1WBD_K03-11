@@ -6,6 +6,9 @@ import (
 	"errors"
 
 	"tubes-wbd/src/auth"
+	"tubes-wbd/src/telemetry"
+
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var (
@@ -81,7 +84,18 @@ func (s databaseAccessService) page(ctx context.Context, user *auth.User, groupI
 }
 
 // save mengubah grant dan dampak session secara atomic lalu mengembalikan grant tersimpan.
-func (s databaseAccessService) save(ctx context.Context, user *auth.User, groupID, databaseID int64, level string) (DatabaseGrant, error) {
+func (s databaseAccessService) save(ctx context.Context, user *auth.User, groupID, databaseID int64, level string) (saved DatabaseGrant, err error) {
+	safeLevel := "invalid"
+	if level == "view" || level == "edit" {
+		safeLevel = level
+	}
+
+	if user != nil {
+		ctx = telemetry.WithActor(ctx, user.ID)
+	}
+	ctx, finish := telemetry.StartActivity(ctx, "admin.group.access.save", attribute.Int64("group_id", groupID), attribute.Int64("database_id", databaseID), attribute.String("access_level", safeLevel))
+	defer func() { finish(err) }()
+
 	if err := auth.Authorize(ctx, s.db, user, auth.ManagePlatform, 0); err != nil {
 		return DatabaseGrant{}, err
 	}
@@ -95,7 +109,7 @@ func (s databaseAccessService) save(ctx context.Context, user *auth.User, groupI
 		return DatabaseGrant{}, errInvalidAccessLevel
 	}
 	var grant DatabaseGrant
-	err := (groupService{db: s.db}).withGroupTransaction(ctx, groupID, func(_ groupRepository, tx *sql.Tx) error {
+	err = (groupService{db: s.db}).withGroupTransaction(ctx, groupID, func(_ groupRepository, tx *sql.Tx) error {
 		repository := databaseAccessRepository{db: tx}
 		if err := repository.lockDatabase(ctx, databaseID, true); err != nil {
 			return err
@@ -130,7 +144,13 @@ func (s databaseAccessService) save(ctx context.Context, user *auth.User, groupI
 }
 
 // revoke mencabut grant dan seluruh session anggota walaupun koneksi target sedang nonaktif.
-func (s databaseAccessService) revoke(ctx context.Context, user *auth.User, groupID, databaseID int64) error {
+func (s databaseAccessService) revoke(ctx context.Context, user *auth.User, groupID, databaseID int64) (err error) {
+	if user != nil {
+		ctx = telemetry.WithActor(ctx, user.ID)
+	}
+	ctx, finish := telemetry.StartActivity(ctx, "admin.group.access.revoke", attribute.Int64("group_id", groupID), attribute.Int64("database_id", databaseID))
+	defer func() { finish(err) }()
+
 	if err := auth.Authorize(ctx, s.db, user, auth.ManagePlatform, 0); err != nil {
 		return err
 	}
