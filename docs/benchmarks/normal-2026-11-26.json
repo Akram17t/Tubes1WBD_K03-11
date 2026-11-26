@@ -1,0 +1,52 @@
+{
+  "environment": {
+    "cpu": "Intel Core i7-13650HX (14 cores, 20 logical processors)",
+    "os": "Windows 11 Home Single Language 10.0.26300",
+    "visible_ram_kib": 12283768,
+    "disk": "WD PC SN740 SDDPMQD-512G-1101",
+    "baseline_table_bytes": 66813952,
+    "isolation": "Shared developer machine; Go test suite was running during the second measurement."
+  },
+  "runs": [
+    {
+      "action": "run",
+      "measured_at": "2026-11-26T02:36:33Z",
+      "database": "wbd_batch_benchmark",
+      "postgresql": "PostgreSQL 18.6 on x86_64-windows, compiled by msvc-19.44.35228, 64-bit",
+      "client": "windows/amd64 go1.26.0",
+      "settings": {
+        "fsync": "on",
+        "full_page_writes": "on",
+        "shared_buffers": "128MB",
+        "synchronous_commit": "on"
+      },
+      "rows": 1000000,
+      "verified": true,
+      "table_bytes": 133554176,
+      "query": "UPDATE public.batch_demo SET value = value + 1",
+      "update_ms": 8663.8837,
+      "commit_ms": 93.2849,
+      "over_one_second": true
+    },
+    {
+      "action": "run",
+      "measured_at": "2026-11-26T02:37:14Z",
+      "database": "wbd_batch_benchmark",
+      "postgresql": "PostgreSQL 18.6 on x86_64-windows, compiled by msvc-19.44.35228, 64-bit",
+      "client": "windows/amd64 go1.26.0",
+      "settings": {
+        "fsync": "on",
+        "full_page_writes": "on",
+        "shared_buffers": "128MB",
+        "synchronous_commit": "on"
+      },
+      "rows": 1000000,
+      "verified": true,
+      "table_bytes": 133554176,
+      "query": "UPDATE public.batch_demo SET value = value + 1",
+      "update_ms": 21022.4539,
+      "commit_ms": 0.7215,
+      "over_one_second": true
+    }
+  ]
+}
