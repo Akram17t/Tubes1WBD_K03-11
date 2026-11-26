@@ -120,6 +120,10 @@ func TestWorkflowDuplicateApprovePreservesSignatures(t *testing.T) {
 	f.call(t, f.editor, "POST", path+"/submit", "", 200, "")
 	f.call(t, f.editor, "POST", path+"/approve", "", 200, "")
 	before := workflowDetail(t, f, f.editor, path)
+	// reviewer non-admin tetap bisa liat nama pengaju dan penanda tangan
+	if before.RequestedByName == "" || before.Approvals[0].ApprovedByName == nil || *before.Approvals[0].ApprovedByName == "" {
+		t.Fatalf("nama pengaju/approver harus dikirim: %+v", before)
+	}
 	for _, state := range []string{"pending_review", "approved"} {
 		if state == "approved" {
 			f.call(t, f.viewer, "POST", path+"/approve", "", 200, "")

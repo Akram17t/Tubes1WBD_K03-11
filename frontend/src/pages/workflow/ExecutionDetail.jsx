@@ -73,7 +73,7 @@ export function ExecutionDetail() {
                   </>
                 )}
                 <dt className="col-5 fw-normal text-secondary">Oleh</dt>
-                <dd className="col-7">{actorName(e.executed_by, user)}</dd>
+                <dd className="col-7">{actorName(e.executed_by, user, e.executed_by_name)}</dd>
                 {e.progress?.committed_rows > 0 && (
                   <>
                     <dt className="col-5 fw-normal text-secondary">Row ter-commit</dt>

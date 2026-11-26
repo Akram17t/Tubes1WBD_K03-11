@@ -49,7 +49,7 @@ func (s WorkflowService) List(ctx context.Context, user *auth.User, databaseID i
 	if err := workflowAuthorize(ctx, s.DB, user, auth.ViewMigration, databaseID); err != nil {
 		return nil, false, err
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT `+requestColumns+`
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+requestColumns+requestedByName+`
 		FROM migration_requests WHERE database_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3`, databaseID, limit+1, offset)
 	if err != nil {
 		return nil, false, err
@@ -57,10 +57,12 @@ func (s WorkflowService) List(ctx context.Context, user *auth.User, databaseID i
 	defer rows.Close()
 	requests := []MigrationRequest{}
 	for rows.Next() {
-		request, err := scanRequest(rows)
+		var name string
+		request, err := scanRequest(rows, &name)
 		if err != nil {
 			return nil, false, err
 		}
+		request.RequestedByName = name
 		requests = append(requests, *request)
 	}
 	if err := rows.Err(); err != nil {
@@ -87,18 +89,21 @@ func (s WorkflowService) Get(ctx context.Context, user *auth.User, databaseID, r
 	if err := workflowAuthorize(ctx, tx, user, auth.ViewMigration, databaseID); err != nil {
 		return nil, err
 	}
-	request, err := scanRequest(tx.QueryRowContext(ctx, `SELECT `+requestColumns+`
-		FROM migration_requests WHERE database_id = $1 AND id = $2`, databaseID, requestID))
+	var name string
+	request, err := scanRequest(tx.QueryRowContext(ctx, `SELECT `+requestColumns+requestedByName+`
+		FROM migration_requests WHERE database_id = $1 AND id = $2`, databaseID, requestID), &name)
 	if err != nil {
 		return nil, err
 	}
+	request.RequestedByName = name
 	detail := &RequestDetail{MigrationRequest: *request, Approvals: []RequestApproval{}, PendingGroupIDs: []string{}, AllowedActions: []string{}}
 	detail.WorkflowStatus = request.ReviewStatus
 	rows, err := tx.QueryContext(ctx, `
-		SELECT a.group_id, a.group_name_snapshot, a.approved_by, a.approved_at,
+		SELECT a.group_id, a.group_name_snapshot, a.approved_by, approver.display_name, a.approved_at,
 			a.approved_by IS NULL AND (g.is_archived OR u.id IS NULL),
 			a.approved_by IS NULL AND NOT g.is_archived AND u.id = $2
 		FROM migration_approvals a JOIN groups g ON g.id = a.group_id
+		LEFT JOIN users approver ON approver.id = a.approved_by
 		LEFT JOIN users u ON u.id = g.leader_user_id AND u.is_active
 			AND EXISTS (SELECT 1 FROM user_groups ug WHERE ug.group_id = g.id AND ug.user_id = u.id)
 		WHERE a.request_id = $1 ORDER BY a.group_id`, requestID, user.ID)
@@ -108,7 +113,7 @@ func (s WorkflowService) Get(ctx context.Context, user *auth.User, databaseID, r
 	for rows.Next() {
 		var approval RequestApproval
 		var canApprove sql.NullBool
-		if err := rows.Scan(&approval.GroupID, &approval.GroupName, &approval.ApprovedBy, &approval.ApprovedAt, &approval.WaitingForLeader, &canApprove); err != nil {
+		if err := rows.Scan(&approval.GroupID, &approval.GroupName, &approval.ApprovedBy, &approval.ApprovedByName, &approval.ApprovedAt, &approval.WaitingForLeader, &canApprove); err != nil {
 			rows.Close()
 			return nil, err
 		}

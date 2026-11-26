@@ -36,6 +36,8 @@ type ExecutionResponse struct {
 	FinishedAt        *time.Time  `json:"finished_at"`
 	ErrorMessage      *string     `json:"error_message"`
 	SQLState          *string     `json:"sqlstate"`
+	MigrationTitle    string      `json:"migration_title"`
+	ExecutedByName    string      `json:"executed_by_name"`
 }
 
 type BatchAttempt struct {
@@ -77,6 +79,7 @@ func executionResponse(databaseID int64, execution Execution) ExecutionResponse 
 		TargetExecutionID: execution.TargetExecutionID, HistorySequence: execution.HistorySequence,
 		SQLSnapshot: execution.SQLSnapshot, Status: execution.Status, Progress: execution.Progress,
 		StartedAt: execution.StartedAt.UTC(), SQLState: execution.SQLState,
+		MigrationTitle: execution.MigrationTitle, ExecutedByName: execution.ExecutedByName,
 	}
 	if execution.FinishedAt.Valid {
 		finished := execution.FinishedAt.Time.UTC()
@@ -94,6 +97,10 @@ const databaseHistory = `WITH database_executions AS (
 	JOIN migrations m ON m.id = e.migration_id WHERE e.database_id = $1 AND m.database_id = $1
 ) `
 
+// judul migration dan nama pelaksana buat tampilan, biar SPA ga perlu nanya API admin
+const historyLabelColumns = `, (SELECT title FROM migrations WHERE id = e.migration_id),
+	(SELECT display_name FROM users WHERE id = e.executed_by)`
+
 // Pasangan hanya sah jika up/forward dan rollback sama-sama sukses pada migration yang sama.
 const historyListSQL = databaseHistory + `, rollback_pairs AS (
 	SELECT r.id, r.target_execution_id FROM database_executions r
@@ -102,7 +109,7 @@ const historyListSQL = databaseHistory + `, rollback_pairs AS (
 	WHERE r.operation = 'rollback' AND r.status = 'success'
 		AND original.status = 'success' AND original.operation IN ('up', 'forward')
 )
-SELECT ` + executionColumns + ` FROM database_executions e
+SELECT ` + executionColumns + historyLabelColumns + ` FROM database_executions e
 WHERE NOT $2 OR e.id NOT IN (
 	SELECT id FROM rollback_pairs UNION SELECT target_execution_id FROM rollback_pairs
 )
@@ -133,10 +140,12 @@ func GetHistory(ctx context.Context, db *sql.DB, user *auth.User, databaseID int
 	defer rows.Close()
 	executions = []Execution{}
 	for rows.Next() {
-		execution, err := scanExecution(rows)
+		var title, name string
+		execution, err := scanExecution(rows, &title, &name)
 		if err != nil {
 			return nil, false, err
 		}
+		execution.MigrationTitle, execution.ExecutedByName = title, name
 		executions = append(executions, *execution)
 	}
 	if err := rows.Err(); err != nil {
@@ -150,7 +159,7 @@ func GetHistory(ctx context.Context, db *sql.DB, user *auth.User, databaseID int
 	return executions, hasMore, nil
 }
 
-const historyDetailSQL = databaseHistory + `SELECT ` + executionColumns + ` FROM database_executions WHERE id = $2`
+const historyDetailSQL = databaseHistory + `SELECT ` + executionColumns + historyLabelColumns + ` FROM database_executions e WHERE id = $2`
 
 const batchAttemptsSQL = `SELECT id, execution_id, job_id, batch_number, direction,
 	first_id, last_id, sql_snapshot,
@@ -180,13 +189,15 @@ func GetExecutionDetail(ctx context.Context, db *sql.DB, user *auth.User, databa
 		return nil, err
 	}
 	args := []any{databaseID, executionID}
-	execution, err := scanExecution(tx.QueryRowContext(ctx, historyDetailSQL, args...))
+	var title, name string
+	execution, err := scanExecution(tx.QueryRowContext(ctx, historyDetailSQL, args...), &title, &name)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
+	execution.MigrationTitle, execution.ExecutedByName = title, name
 	detail = &ExecutionDetail{ExecutionResponse: executionResponse(databaseID, *execution), BatchAttempts: []BatchAttempt{}}
 	args = []any{executionID, limit + 1, offset}
 	rows, err := tx.QueryContext(ctx, batchAttemptsSQL, args...)
