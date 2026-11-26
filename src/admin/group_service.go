@@ -7,6 +7,9 @@ import (
 	"unicode/utf8"
 
 	"tubes-wbd/src/auth"
+	"tubes-wbd/src/telemetry"
+
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type groupStore interface {
@@ -37,11 +40,17 @@ func (s groupService) list(ctx context.Context, user *auth.User) ([]Group, error
 }
 
 // create memvalidasi input admin sebelum menyimpan group baru.
-func (s groupService) create(ctx context.Context, user *auth.User, name, description string) (Group, error) {
+func (s groupService) create(ctx context.Context, user *auth.User, name, description string) (created Group, err error) {
+	if user != nil {
+		ctx = telemetry.WithActor(ctx, user.ID)
+	}
+	ctx, finish := telemetry.StartActivity(ctx, "admin.group.create")
+	defer func() { finish(err, attribute.Int64("group_id", created.ID)) }()
+
 	if err := s.authorize(ctx, user); err != nil {
 		return Group{}, err
 	}
-	name, description, err := groupInput(name, description)
+	name, description, err = groupInput(name, description)
 	if err != nil {
 		return Group{}, err
 	}
@@ -69,14 +78,20 @@ func (s groupService) edit(ctx context.Context, user *auth.User, id int64) (grou
 }
 
 // update memvalidasi perubahan label group tanpa mengubah izin anggotanya.
-func (s groupService) update(ctx context.Context, user *auth.User, id int64, name, description string) error {
+func (s groupService) update(ctx context.Context, user *auth.User, id int64, name, description string) (err error) {
+	if user != nil {
+		ctx = telemetry.WithActor(ctx, user.ID)
+	}
+	ctx, finish := telemetry.StartActivity(ctx, "admin.group.update", attribute.Int64("group_id", id))
+	defer func() { finish(err) }()
+
 	if err := s.authorize(ctx, user); err != nil {
 		return err
 	}
 	if id <= 0 {
 		return errInvalidGroupID
 	}
-	name, description, err := groupInput(name, description)
+	name, description, err = groupInput(name, description)
 	if err != nil {
 		return err
 	}
@@ -85,7 +100,13 @@ func (s groupService) update(ctx context.Context, user *auth.User, id int64, nam
 }
 
 // deleteGroup mengarsipkan group dan mencabut session seluruh anggotanya dalam satu transaction.
-func (s groupService) deleteGroup(ctx context.Context, user *auth.User, id int64) error {
+func (s groupService) deleteGroup(ctx context.Context, user *auth.User, id int64) (err error) {
+	if user != nil {
+		ctx = telemetry.WithActor(ctx, user.ID)
+	}
+	ctx, finish := telemetry.StartActivity(ctx, "admin.group.archive", attribute.Int64("group_id", id))
+	defer func() { finish(err) }()
+
 	if err := s.authorize(ctx, user); err != nil {
 		return err
 	}
@@ -110,7 +131,13 @@ func (s groupService) deleteGroup(ctx context.Context, user *auth.User, id int64
 }
 
 // addMember menambahkan anggota dan meminta rotasi session setelah privilege bertambah.
-func (s groupService) addMember(ctx context.Context, user *auth.User, groupID, userID int64) error {
+func (s groupService) addMember(ctx context.Context, user *auth.User, groupID, userID int64) (err error) {
+	if user != nil {
+		ctx = telemetry.WithActor(ctx, user.ID)
+	}
+	ctx, finish := telemetry.StartActivity(ctx, "admin.group.member.add", attribute.Int64("group_id", groupID), attribute.Int64("target_user_id", userID))
+	defer func() { finish(err) }()
+
 	if err := s.authorize(ctx, user); err != nil {
 		return err
 	}
@@ -129,7 +156,13 @@ func (s groupService) addMember(ctx context.Context, user *auth.User, groupID, u
 }
 
 // removeMember mengeluarkan anggota dan mencabut session-nya secara atomic.
-func (s groupService) removeMember(ctx context.Context, user *auth.User, groupID, userID int64) error {
+func (s groupService) removeMember(ctx context.Context, user *auth.User, groupID, userID int64) (err error) {
+	if user != nil {
+		ctx = telemetry.WithActor(ctx, user.ID)
+	}
+	ctx, finish := telemetry.StartActivity(ctx, "admin.group.member.remove", attribute.Int64("group_id", groupID), attribute.Int64("target_user_id", userID))
+	defer func() { finish(err) }()
+
 	if err := s.authorize(ctx, user); err != nil {
 		return err
 	}
@@ -162,7 +195,18 @@ func (s groupService) withGroupTransaction(ctx context.Context, groupID int64, o
 }
 
 // setLeader mengganti leader, mencabut session leader lama, dan menaikkan privilege leader baru.
-func (s groupService) setLeader(ctx context.Context, user *auth.User, groupID int64, leaderID *int64) error {
+func (s groupService) setLeader(ctx context.Context, user *auth.User, groupID int64, leaderID *int64) (err error) {
+	leader := int64(0)
+	if leaderID != nil {
+		leader = *leaderID
+	}
+
+	if user != nil {
+		ctx = telemetry.WithActor(ctx, user.ID)
+	}
+	ctx, finish := telemetry.StartActivity(ctx, "admin.group.leader.set", attribute.Int64("group_id", groupID), attribute.Int64("leader_user_id", leader), attribute.Bool("leader_cleared", leaderID == nil))
+	defer func() { finish(err) }()
+
 	if err := s.authorize(ctx, user); err != nil {
 		return err
 	}

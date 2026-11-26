@@ -8,12 +8,21 @@ import (
 	"time"
 
 	"tubes-wbd/src/auth"
+	"tubes-wbd/src/telemetry"
+
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var (
 	ErrWorkflowUnavailable = errors.New("integrasi definisi atau job migration belum tersedia")
 	ErrApprovalIncomplete  = errors.New("persetujuan group belum lengkap")
 )
+
+// approvalIncompleteError membawa ID group pending dari snapshot request yang sudah diperiksa izinnya.
+type approvalIncompleteError struct{ pendingGroupIDs []string }
+
+func (e *approvalIncompleteError) Error() string { return ErrApprovalIncomplete.Error() }
+func (e *approvalIncompleteError) Unwrap() error { return ErrApprovalIncomplete }
 
 type RequestInput struct {
 	MigrationID       int64  `json:"migration_id,string"`
@@ -215,7 +224,26 @@ func (s WorkflowService) validate(ctx context.Context, tx *sql.Tx, databaseID in
 }
 
 // Create menyimpan pengajuan draft dari definisi tersimpan setelah pemeriksaan izin Edit.
-func (s WorkflowService) Create(ctx context.Context, user *auth.User, databaseID int64, input RequestInput) (*MigrationRequest, error) {
+func (s WorkflowService) Create(ctx context.Context, user *auth.User, databaseID int64, input RequestInput) (created *MigrationRequest, err error) {
+	if user != nil {
+		ctx = telemetry.WithActor(ctx, user.ID)
+	}
+	operation := input.Operation
+	switch operation {
+	case "up", "rollback", "forward", "compensate":
+	default:
+		operation = "invalid"
+	}
+	ctx, finish := telemetry.StartActivity(ctx, "workflow.create", attribute.Int64("database_id", databaseID), attribute.Int64("migration_id", input.MigrationID), attribute.Int("revision", input.Revision), attribute.String("operation", operation))
+
+	defer func() {
+		if created != nil && err == nil {
+			finish(err, attribute.Int64("request_entry_id", created.ID), attribute.String("review_status", created.ReviewStatus))
+		} else {
+			finish(err)
+		}
+	}()
+
 	if databaseID < 1 || !validRequestInput(input) {
 		return nil, ErrInvalidInput
 	}
@@ -253,7 +281,19 @@ func (s WorkflowService) Create(ctx context.Context, user *auth.User, databaseID
 }
 
 // Submit memvalidasi ulang snapshot dan membekukan daftar group yang wajib menyetujui pengajuan.
-func (s WorkflowService) Submit(ctx context.Context, user *auth.User, databaseID, requestID int64) (*MigrationRequest, error) {
+func (s WorkflowService) Submit(ctx context.Context, user *auth.User, databaseID, requestID int64) (submitted *MigrationRequest, err error) {
+	if user != nil {
+		ctx = telemetry.WithActor(ctx, user.ID)
+	}
+	ctx, finish := telemetry.StartActivity(ctx, "workflow.submit", attribute.Int64("database_id", databaseID), attribute.Int64("request_entry_id", requestID))
+	defer func() {
+		if submitted != nil && err == nil {
+			finish(err, attribute.Int64("migration_id", submitted.MigrationID), attribute.Int("revision", submitted.Revision), attribute.String("review_status", submitted.ReviewStatus))
+		} else {
+			finish(err)
+		}
+	}()
+
 	if databaseID < 1 || requestID < 1 {
 		return nil, ErrInvalidInput
 	}
@@ -311,7 +351,19 @@ func (s WorkflowService) Submit(ctx context.Context, user *auth.User, databaseID
 }
 
 // Approve mengisi seluruh slot group yang dipimpin aktor dalam satu transaction dan aman diulang.
-func (s WorkflowService) Approve(ctx context.Context, user *auth.User, databaseID, requestID int64) (*ApprovalResult, error) {
+func (s WorkflowService) Approve(ctx context.Context, user *auth.User, databaseID, requestID int64) (approved *ApprovalResult, err error) {
+	if user != nil {
+		ctx = telemetry.WithActor(ctx, user.ID)
+	}
+	ctx, finish := telemetry.StartActivity(ctx, "workflow.approve", attribute.Int64("database_id", databaseID), attribute.Int64("request_entry_id", requestID))
+	defer func() {
+		if approved != nil && err == nil {
+			finish(err, attribute.String("review_status", approved.ReviewStatus), attribute.StringSlice("approved_group_ids", approved.ApprovedGroupIDs))
+		} else {
+			finish(err)
+		}
+	}()
+
 	if databaseID < 1 || requestID < 1 {
 		return nil, ErrInvalidInput
 	}
@@ -390,7 +442,19 @@ func (s WorkflowService) Approve(ctx context.Context, user *auth.User, databaseI
 }
 
 // Cancel menarik pengajuan milik aktor setelah memastikan belum ada job yang dibuat.
-func (s WorkflowService) Cancel(ctx context.Context, user *auth.User, databaseID, requestID int64) (*MigrationRequest, error) {
+func (s WorkflowService) Cancel(ctx context.Context, user *auth.User, databaseID, requestID int64) (cancelled *MigrationRequest, err error) {
+	if user != nil {
+		ctx = telemetry.WithActor(ctx, user.ID)
+	}
+	ctx, finish := telemetry.StartActivity(ctx, "workflow.cancel", attribute.Int64("database_id", databaseID), attribute.Int64("request_entry_id", requestID))
+	defer func() {
+		if cancelled != nil && err == nil {
+			finish(err, attribute.Int64("migration_id", cancelled.MigrationID), attribute.Int("revision", cancelled.Revision), attribute.String("review_status", cancelled.ReviewStatus))
+		} else {
+			finish(err)
+		}
+	}()
+
 	if databaseID < 1 || requestID < 1 {
 		return nil, ErrInvalidInput
 	}
@@ -463,15 +527,30 @@ func checkLockedRequestApproval(ctx context.Context, tx *sql.Tx, request *Migrat
 		request.Snapshot.MigrationID != request.MigrationID || request.Snapshot.DatabaseID != request.DatabaseID {
 		return nil, ErrConflict
 	}
-	var complete bool
-	err := tx.QueryRowContext(ctx, `SELECT
-		EXISTS (SELECT 1 FROM migration_approvals WHERE request_id = $1) AND
-		NOT EXISTS (SELECT 1 FROM migration_approvals WHERE request_id = $1 AND approved_by IS NULL)`, request.ID).Scan(&complete)
+	rows, err := tx.QueryContext(ctx, `SELECT group_id::text, approved_by IS NOT NULL
+		FROM migration_approvals WHERE request_id = $1 ORDER BY group_id`, request.ID)
 	if err != nil {
 		return nil, err
 	}
-	if request.ReviewStatus != "approved" || !complete {
-		return nil, ErrApprovalIncomplete
+	defer rows.Close()
+	pendingGroupIDs := []string{}
+	groups := 0
+	for rows.Next() {
+		var groupID string
+		var approved bool
+		if err := rows.Scan(&groupID, &approved); err != nil {
+			return nil, err
+		}
+		groups++
+		if !approved {
+			pendingGroupIDs = append(pendingGroupIDs, groupID)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if request.ReviewStatus != "approved" || groups == 0 || len(pendingGroupIDs) != 0 {
+		return nil, &approvalIncompleteError{pendingGroupIDs: pendingGroupIDs}
 	}
 	return request, nil
 }

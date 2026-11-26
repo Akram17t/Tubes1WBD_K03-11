@@ -27,7 +27,7 @@ func TestWorkflowApprovalBeforeExecute(t *testing.T) {
 		VALUES (1,1,'Test definition','SELECT 1',1);
 	`)
 	service := migration.WorkflowService{DB: db}
-	// Validator SQL belum tersedia; test ini hanya memeriksa workflow approval.
+	// Stub menjaga test service tetap terisolasi; test API memakai validator definisi nyata.
 	service.Validate = func(context.Context, *sql.Tx, int64, migration.RequestInput) (migration.DefinitionSnapshot, error) {
 		return migration.DefinitionSnapshot{MigrationID: 1, DatabaseID: 1, Revision: 1,
 			Title: "Test definition", SQLUp: "SELECT 1", Mode: "normal", Irreversible: true}, nil

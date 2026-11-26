@@ -163,7 +163,12 @@ func workflowRespondError(c *gin.Context, err error) {
 	case errors.Is(err, ErrNotFound):
 		workflowError(c, http.StatusNotFound, "not_found", "Pengajuan atau migration tidak ditemukan.")
 	case errors.Is(err, ErrApprovalIncomplete):
-		workflowError(c, http.StatusConflict, "approval_incomplete", ErrApprovalIncomplete.Error())
+		pendingGroupIDs := []string{}
+		if incomplete, ok := errors.AsType[*approvalIncompleteError](err); ok {
+			pendingGroupIDs = incomplete.pendingGroupIDs
+		}
+		api.Fail(c, http.StatusConflict, "approval_incomplete", ErrApprovalIncomplete.Error(),
+			map[string]any{"pending_group_ids": pendingGroupIDs})
 	case errors.Is(err, ErrConflict):
 		workflowError(c, http.StatusConflict, "state_conflict", "Status atau revisi pengajuan tidak sesuai.")
 	case errors.Is(err, ErrWorkflowUnavailable):

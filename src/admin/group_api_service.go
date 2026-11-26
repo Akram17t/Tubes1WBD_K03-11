@@ -5,6 +5,9 @@ import (
 	"database/sql"
 
 	"tubes-wbd/src/auth"
+	"tubes-wbd/src/telemetry"
+
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type groupChanges struct {
@@ -45,7 +48,23 @@ func (s groupService) membersPage(ctx context.Context, user *auth.User, id int64
 }
 
 // patch mengubah field yang dikirim tanpa menimpa field lain atau meninggalkan perubahan sebagian.
-func (s groupService) patch(ctx context.Context, user *auth.User, id int64, changes groupChanges) (Group, error) {
+func (s groupService) patch(ctx context.Context, user *auth.User, id int64, changes groupChanges) (updated Group, err error) {
+	event := "admin.group.update"
+	attrs := []attribute.KeyValue{attribute.Int64("group_id", id), attribute.Bool("name_provided", changes.Name != nil), attribute.Bool("description_provided", changes.SetDescription)}
+	if changes.SetLeader {
+		event = "admin.group.leader.set"
+		leader := int64(0)
+		if changes.LeaderUserID != nil {
+			leader = *changes.LeaderUserID
+		}
+		attrs = append(attrs, attribute.Int64("leader_user_id", leader), attribute.Bool("leader_cleared", changes.LeaderUserID == nil))
+	}
+	if user != nil {
+		ctx = telemetry.WithActor(ctx, user.ID)
+	}
+	ctx, finish := telemetry.StartActivity(ctx, event, attrs...)
+	defer func() { finish(err) }()
+
 	if err := s.authorize(ctx, user); err != nil {
 		return Group{}, err
 	}
@@ -53,7 +72,7 @@ func (s groupService) patch(ctx context.Context, user *auth.User, id int64, chan
 		return Group{}, errInvalidGroupID
 	}
 	var group Group
-	err := s.withGroupTransaction(ctx, id, func(repository groupRepository, tx *sql.Tx) error {
+	err = s.withGroupTransaction(ctx, id, func(repository groupRepository, tx *sql.Tx) error {
 		var err error
 		group, err = repository.find(ctx, id)
 		if err != nil {
