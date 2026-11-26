@@ -3,23 +3,15 @@ package main
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 
 	"tubes-wbd/src/database"
 	"tubes-wbd/src/migration"
 )
 
-// newJobExecutor diganti mesin eksekusi (bagian E). Selama nil, worker menolak start agar tidak
-// mengklaim job yang belum dapat dijalankan.
-var newJobExecutor func(*sql.DB) migration.JobExecutor
-
 // runWorker menjalankan role worker sampai proses diminta berhenti.
 func runWorker(ctx context.Context, config Config, platformDB *sql.DB) error {
-	if newJobExecutor == nil {
-		return errors.New("mesin eksekusi migration belum tersedia; APP_ROLE=worker belum dapat dijalankan")
-	}
-	// Tiap job memegang satu koneksi platform khusus, ditambah heartbeat dan query pendukung.
+	// Tiap job memegang satu koneksi platform khusus, ditambah heartbeat, eksekutor, dan query pendukung.
 	platformDB.SetMaxOpenConns(max(10, 3*config.WorkerConcurrency+4))
 
 	connections, err := database.NewConnectionService(platformDB, config.ConnectionEncryptionKey)
@@ -36,7 +28,7 @@ func runWorker(ctx context.Context, config Config, platformDB *sql.DB) error {
 			BatchSizeDefault: config.BatchSizeDefault,
 			BatchSizeMax:     config.BatchSizeMax,
 		},
-		Executor:          newJobExecutor(platformDB),
+		Executor:          migration.NewExecutor(platformDB),
 		Concurrency:       config.WorkerConcurrency,
 		PollInterval:      config.WorkerPollInterval,
 		HeartbeatInterval: config.WorkerHeartbeatInterval,
