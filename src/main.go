@@ -35,7 +35,7 @@ func run(ctx context.Context) error {
 
 	// log JSON ke stdout, span console ke stderr biar stream log tetap rapi
 	slog.SetDefault(telemetry.NewLogger(os.Stdout, config.LogLevel))
-	shutdownTracing, err := telemetry.SetupTracing("tubes-wbd-api", config.TraceExporter, os.Stderr)
+	shutdownTracing, err := telemetry.SetupTracing("tubes-wbd-"+config.AppRole, config.TraceExporter, os.Stderr)
 	if err != nil {
 		return err
 	}
@@ -52,6 +52,11 @@ func run(ctx context.Context) error {
 		return err
 	}
 	defer platformDB.Close()
+
+	// Role worker tidak membuat admin awal dan tidak membuka HTTP listener.
+	if config.AppRole == RoleWorker {
+		return runWorker(ctx, config, platformDB)
+	}
 
 	if err := auth.EnsureAdmin(ctx, platformDB, config.AdminUsername, config.AdminPassword); err != nil {
 		return fmt.Errorf("seed platform admin: %w", err)

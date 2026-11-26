@@ -310,6 +310,9 @@ func startExecution(ctx context.Context, platform *sql.Conn, userID, dbID, migra
 	err = tx.QueryRowContext(ctx, `
 		UPDATE migrations SET status = 'running', locked_at = COALESCE(locked_at, now()), updated_at = now()
 		WHERE database_id = $1 AND id = $2 AND status IN ('draft', 'failed')
+			-- Jalur M1 tidak boleh menyusul queue: definisi ber-job dan database dengan job belum tuntas ditolak.
+			AND NOT EXISTS (SELECT 1 FROM migration_jobs j WHERE j.migration_id = $2
+				OR (j.database_id = $1 AND j.status IN ('queued', 'running', 'partial', 'partially_reverted', 'outcome_unknown')))
 		RETURNING sql_content
 	`, dbID, migrationID).Scan(&snapshot)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -411,7 +414,7 @@ func reconcileExecutions(ctx context.Context, platform, target *sql.Conn, dbID i
 	rows, err := platform.QueryContext(ctx, `
 		SELECT e.id, e.migration_id
 		FROM migration_executions e JOIN migrations m ON m.id = e.migration_id
-		WHERE m.database_id = $1 AND e.status = 'running'
+		WHERE m.database_id = $1 AND e.status = 'running' AND e.job_id IS NULL
 		ORDER BY e.id
 	`, dbID)
 	if err != nil {

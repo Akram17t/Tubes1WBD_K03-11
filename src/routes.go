@@ -23,7 +23,7 @@ type Dependencies struct {
 	PlatformDB        *sql.DB
 	TargetDB          database.TargetProvider
 	TargetConnections *database.ConnectionService
-	// Validator dan queue diisi saat mesin eksekusi M2 sudah tersedia.
+	// Kosong berarti memakai validator dan queue M2; test dapat mengganti keduanya.
 	MigrationWorkflow migration.WorkflowService
 }
 
@@ -91,6 +91,13 @@ func newRouter(deps Dependencies) (*gin.Engine, error) {
 	}
 	if workflow.FindJob == nil {
 		workflow.FindJob = migration.FindRequestJob
+	}
+	jobs := migration.JobService{DB: deps.PlatformDB, Definitions: definitions}
+	if workflow.Enqueue == nil {
+		workflow.Enqueue = jobs.Enqueue
+	}
+	if err := migration.RegisterJobRoutes(router, jobs, auth.CSRF()); err != nil {
+		return nil, fmt.Errorf("register migration jobs: %w", err)
 	}
 	if err := migration.RegisterWorkflowRoutes(router, workflow, auth.CSRF()); err != nil {
 		return nil, fmt.Errorf("register migration workflow: %w", err)
