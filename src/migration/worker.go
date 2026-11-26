@@ -113,7 +113,7 @@ func (w *Worker) Run(ctx context.Context) {
 	}
 	group.Add(w.config.Concurrency + 1)
 	for range w.config.Concurrency {
-		go loop(w.config.PollInterval, func() (bool, error) { return w.RunOnce(jobCtx) })
+		go loop(w.config.PollInterval, func() (bool, error) { return w.runOnce(ctx, jobCtx) })
 	}
 	go loop(w.config.HeartbeatInterval, func() (bool, error) {
 		_, err := w.RecoverOnce(jobCtx)
