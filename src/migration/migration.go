@@ -310,9 +310,9 @@ func startExecution(ctx context.Context, platform *sql.Conn, userID, dbID, migra
 	err = tx.QueryRowContext(ctx, `
 		UPDATE migrations SET status = 'running', locked_at = COALESCE(locked_at, now()), updated_at = now()
 		WHERE database_id = $1 AND id = $2 AND status IN ('draft', 'failed')
-			-- Jalur M1 tidak boleh menyusul queue: definisi ber-job dan database dengan job belum tuntas ditolak.
-			AND NOT EXISTS (SELECT 1 FROM migration_jobs j WHERE j.migration_id = $2
-				OR (j.database_id = $1 AND j.status IN ('queued', 'running', 'partial', 'partially_reverted', 'outcome_unknown')))
+			-- Jalur M1 tidak boleh dicampur dengan queue: nomor version M1 dan history_sequence worker
+			-- berbagi ledger target, jadi database yang pernah punya job ditolak.
+			AND NOT EXISTS (SELECT 1 FROM migration_jobs j WHERE j.migration_id = $2 OR j.database_id = $1)
 		RETURNING sql_content
 	`, dbID, migrationID).Scan(&snapshot)
 	if errors.Is(err, sql.ErrNoRows) {

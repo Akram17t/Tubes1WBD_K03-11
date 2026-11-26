@@ -82,9 +82,19 @@ func jobContext(ctx context.Context, job *claimedJob) context.Context {
 
 // RunOnce mengklaim dan memproses paling banyak satu job. false berarti tidak ada job yang layak.
 func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
+	return w.runOnce(ctx, ctx)
+}
+
+// runOnce memakai stop untuk berhenti mengklaim. Klaim yang baru selesai setelah shutdown diminta
+// dilepas kembali tanpa attempt, karena worker tidak lagi boleh memulai job baru.
+func (w *Worker) runOnce(stop, ctx context.Context) (bool, error) {
 	job, err := w.claim(ctx)
 	if err != nil || job == nil {
 		return false, err
+	}
+	if stop.Err() != nil {
+		w.logJob(ctx, slog.LevelInfo, "job.released", job, JobQueued)
+		return false, w.requeueAfter(ctx, job, 0)
 	}
 	ctx = jobContext(ctx, job)
 	_, wait := telemetry.Tracer().Start(ctx, "queue.wait", trace.WithTimestamp(job.EligibleAt), jobAttributes(job))
@@ -248,11 +258,15 @@ func (w *Worker) beginAttempt(ctx context.Context, platform *sql.Conn, job *clai
 
 // requeue mengembalikan job tanpa menghitung attempt.
 func (w *Worker) requeue(ctx context.Context, job *claimedJob) error {
+	return w.requeueAfter(ctx, job, lockRetryDelay)
+}
+
+func (w *Worker) requeueAfter(ctx context.Context, job *claimedJob, delay time.Duration) error {
 	return fencedUpdate(w.config.DB.ExecContext(ctx, `
 		UPDATE migration_jobs SET status = 'queued', next_attempt_at = now() + make_interval(secs => $3),
 			heartbeat_at = NULL, worker_id = NULL, worker_token = NULL, updated_at = now()
 		WHERE id = $1 AND worker_token = $2 AND status = 'running'`,
-		job.JobID, job.WorkerToken, lockRetryDelay.Seconds()))
+		job.JobID, job.WorkerToken, delay.Seconds()))
 }
 
 func fencedUpdate(result sql.Result, err error) error {
