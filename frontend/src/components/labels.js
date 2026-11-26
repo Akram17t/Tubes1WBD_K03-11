@@ -37,10 +37,14 @@ export const POSITION = {
   superseded: { label: 'Tergantikan', tone: 'dark' },
 }
 
-// persen progress dari row yang sudah di-commit; null kalau total belum diketahui
-export function progressPercent(progress) {
+// rollback/kompensasi maju lewat row yang dibatalkan, bukan yang di-commit
+export const isRevertOperation = (operation) => operation === 'rollback' || operation === 'compensate'
+
+// persen progress; null kalau total belum diketahui
+export function progressPercent(progress, operation) {
   if (!progress?.total_rows) return null
-  return Math.min(100, Math.round((progress.committed_rows / progress.total_rows) * 100))
+  const done = isRevertOperation(operation) ? progress.reverted_rows : progress.committed_rows
+  return Math.min(100, Math.round((done / progress.total_rows) * 100))
 }
 
 // timestamp RFC3339 UTC dari server -> waktu lokal browser; null jadi tanda strip

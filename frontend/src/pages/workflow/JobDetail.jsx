@@ -163,7 +163,7 @@ export function JobDetail() {
 // progress dari angka yang diakui commit di backend, bukan timer frontend
 function Progress({ job }) {
   const p = job.progress
-  const percent = progressPercent(p)
+  const percent = progressPercent(p, job.operation)
   return (
     <section className="card">
       <div className="card-body">
