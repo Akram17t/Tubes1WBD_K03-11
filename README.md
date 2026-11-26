@@ -118,8 +118,8 @@ Saat mengembangkan frontend, jalankan `npm run dev` di folder `frontend` lalu bu
 Koneksi contoh tidak dimasukkan ke seed karena password-nya harus dienkripsi dengan kunci masing-masing. Sebagai admin:
 
 1. Buka **Koneksi**, klik **Tambah koneksi**, lalu isi: nama `target-db`, host `localhost`, port `5432`, database `target_db`, username `postgres`, password `postgres`, SSL mode `disable`.
-2. Buka koneksi yang baru dibuat, lalu klik **Uji koneksi tersimpan** untuk memeriksanya.
-3. Buka **Group**, pilih **analyst**, lalu **Akses database**, dan berikan akses `target-db` dengan tingkat `view`.
+2. Klik **Uji koneksi** pada koneksi yang baru dibuat untuk memeriksanya.
+3. Buka **Group**, pilih **analyst**, lalu di bagian **Akses database** pilih `target-db` dengan tingkat `view` dan klik **Beri akses**.
 4. Lakukan hal yang sama untuk **developer** dengan tingkat `edit`.
 
 User demo sekarang dapat login dengan password `demo12345`:
@@ -135,6 +135,10 @@ Satu browser hanya dapat login sebagai satu user dalam satu waktu, karena semua 
 
 ## Documentation
 
+Tampilan aplikasi berupa SPA React yang berkomunikasi dengan server Go lewat API JSON. Setiap halaman memakai layout responsif dan menampilkan keadaan loading, kosong, error, dan akses ditolak. Tombol yang mengubah data dinonaktifkan selama request berjalan supaya tidak terkirim dua kali.
+
+![Tampilan di layar HP](screenshots/mobile.png)
+
 ### Login
 
 ![Login](screenshots/login.png)
@@ -145,19 +149,19 @@ Halaman login berisi input username dan password. Username tidak membedakan huru
 
 ![Daftar database](screenshots/databases.png)
 
-Halaman ini hanya menampilkan database aktif yang dapat diakses pengguna melalui group-nya. Database tanpa pemberian akses tidak muncul, dan membukanya langsung lewat URL menghasilkan 403.
+Halaman ini hanya menampilkan database aktif yang dapat diakses pengguna melalui group-nya, beserta tingkat aksesnya. Database tanpa pemberian akses tidak muncul, dan membukanya langsung lewat URL menghasilkan pesan akses ditolak.
 
-### Ringkasan Database
+### Struktur Database
 
-![Ringkasan database](screenshots/database.png)
+![Struktur database](screenshots/schema.png)
 
-Halaman ringkasan menampilkan database yang dipilih beserta tautan ke viewer schema dan daftar migration.
+Setiap database punya empat tab: Struktur, Migration, Request, dan History. Tab Struktur menampilkan daftar schema dan tabel pada database target. Jika database sedang ditahan karena migration yang berhenti di tengah, alasannya ditampilkan di atas tab.
 
-### Viewer Schema
+### Struktur Tabel
 
-![Viewer schema](screenshots/schema.png)
+![Struktur tabel](screenshots/table.png)
 
-Pengguna dengan akses View atau Edit dapat menelusuri schema dan tabel pada database target. Untuk setiap tabel, halaman ini menampilkan kolom beserta tipe PostgreSQL dan status nullable, constraint (primary key, foreign key, unique, check), serta index. Nama schema dan tabel divalidasi terhadap database target sebelum query dibuat.
+Untuk setiap tabel ditampilkan kolom beserta tipe PostgreSQL dan status nullable, constraint (primary key, foreign key, unique, check), serta index. Nama schema dan tabel divalidasi terhadap database target sebelum query dibuat.
 
 ### Data Tabel
 
@@ -169,55 +173,79 @@ Isi tabel ditampilkan dengan pagination. Ukuran halaman dibatasi di server, sehi
 
 ![Daftar migration](screenshots/migrations.png)
 
-Halaman ini menampilkan seluruh migration pada database beserta status (draft, running, success, atau failed) dan version-nya. Pengguna dengan akses View hanya dapat membaca daftar; tombol buat migration hanya muncul untuk pengguna dengan akses Edit, dan backend tetap memeriksa izin pada setiap request.
+Migration adalah definisi berisi SQL up dan SQL down. Daftar ini menampilkan mode (normal atau batch), penanda irreversible dan terkunci, serta posisi migration: belum pernah diterapkan, aktif, sudah di-rollback, atau tergantikan. Posisi dihitung dari riwayat eksekusi yang sukses. Tombol buat migration hanya muncul untuk pengguna dengan akses Edit, dan backend tetap memeriksa izin pada setiap request.
 
 ### Buat dan Edit Migration
 
 ![Buat migration](screenshots/migration-new.png)
 
-Pengguna dengan akses Edit dapat menulis migration berisi judul, deskripsi (opsional), dan SQL yang akan dijalankan. Migration dapat diubah selama masih berstatus draft atau setelah gagal. Migration yang sudah berhasil tidak dapat diubah atau dijalankan ulang.
+Pengguna dengan akses Edit menulis judul, deskripsi (opsional), SQL up, dan SQL down. SQL divalidasi dengan parser PostgreSQL sebelum disimpan. Mode batch memecah perubahan per kelompok ID agar lock tabel singkat; SQL-nya harus berbentuk `UPDATE schema.tabel ... WHERE kolom_key = ANY($1::bigint[])`. Migration yang ditandai irreversible wajib menyertakan alasan dan tidak dapat di-rollback. Definisi dapat diubah selama belum dipakai request; setelah itu definisi dikunci dan perbaikan dibuat sebagai migration baru. Jika definisi sudah diubah orang lain, penyimpanan ditolak supaya perubahan tidak saling menimpa.
 
 ### Detail Migration
 
 ![Detail migration](screenshots/migration-detail.png)
 
-Halaman detail menampilkan SQL migration, status, version yang diperoleh, dan riwayat setiap percobaan eksekusi. Menjalankan migration berarti menjalankan SQL-nya di dalam satu transaction pada database target. Hanya satu eksekusi yang dapat berjalan per database dalam satu waktu, dan setiap eksekusi yang berhasil mendapat nomor version berikutnya.
+Halaman detail menampilkan definisi dan tombol aksi yang berlaku untuk posisi migration saat ini: ajukan up untuk migration yang belum diterapkan, ajukan rollback untuk migration aktif teratas, atau ajukan forward untuk menerapkan ulang migration yang baru di-rollback. Rollback dan forward mengikuti urutan linear, jadi hanya migration teratas yang dapat dibatalkan.
 
-### Hasil Eksekusi
+### Daftar Request
 
-![Hasil eksekusi](screenshots/execution.png)
+![Daftar request](screenshots/requests.png)
 
-Setiap percobaan eksekusi dicatat beserta pelaksana, waktu mulai dan selesai, serta hasilnya. Jika SQL gagal, transaction di-rollback sehingga database target tidak berubah, dan pesan error ditampilkan tanpa membocorkan kredensial koneksi. Migration kemudian dapat diperbaiki lalu dijalankan ulang.
+Menjalankan migration selalu melalui request. Request menyimpan snapshot definisi saat diajukan, sehingga yang di-review leader sama persis dengan yang dijalankan.
+
+### Review dan Approval
+
+![Detail request](screenshots/request-detail.png)
+
+Setelah request di-submit, leader setiap group yang punya akses ke database tersebut memberikan approval atas nama group-nya. Halaman ini menampilkan snapshot SQL yang akan dijalankan dan status approval per group. Request baru dapat dieksekusi setelah semua group menyetujui, dan pengaju menekan tombol eksekusi secara terpisah.
+
+### Job dan Progress
+
+![Job sukses](screenshots/job.png)
+
+Eksekusi berjalan di proses worker terpisah sebagai job. Halaman job memperbarui statusnya otomatis setiap dua detik selama job masih antre atau berjalan, dan berhenti memperbarui saat tab tidak terlihat. Progress dihitung dari row dan batch yang benar-benar sudah di-commit, bukan dari timer.
+
+![Job gagal](screenshots/job-failed.png)
+
+Jika SQL gagal, pesan error dan SQLSTATE ditampilkan tanpa membocorkan kredensial koneksi. Migration batch yang berhenti setelah sebagian batch di-commit berstatus "berhenti di tengah" dan menahan migration lain pada database tersebut sampai job dilanjutkan (resume) atau dikompensasi. Kompensasi menjalankan SQL down hanya untuk batch yang sudah di-commit, dan seperti request lain harus di-review terlebih dahulu. Status yang belum pasti tidak pernah ditampilkan sebagai gagal, dan aplikasi tidak pernah menyarankan menjalankan SQL secara manual.
+
+### History
+
+![History](screenshots/history.png)
+
+History mencatat setiap percobaan eksekusi, termasuk yang gagal dan retry, beserta pelaksana dan waktunya. Opsi Hide rollback menyembunyikan pasangan eksekusi sukses yang sudah di-rollback beserta rollback-nya; kegagalan tetap ditampilkan.
+
+### Detail Eksekusi
+
+![Detail eksekusi](screenshots/execution.png)
+
+Detail eksekusi menampilkan SQL yang benar-benar dijalankan, error jika ada, relasi ke eksekusi yang dibatalkan, dan untuk mode batch, catatan setiap batch berupa cakupan ID, jumlah row, status, dan SQL-nya.
 
 ### Administrasi User
 
 ![Administrasi user](screenshots/users.png)
 
-Platform Admin dapat melihat seluruh akun beserta peran dan statusnya, membuat user baru, serta mengaktifkan atau menonaktifkan akun. Menonaktifkan akun langsung mencabut seluruh session milik akun tersebut.
+Platform Admin dapat melihat seluruh akun beserta peran dan statusnya, membuat user baru, serta mengaktifkan atau menonaktifkan akun. Menonaktifkan akun langsung mencabut seluruh session milik akun tersebut dan melepas jabatan leader group yang dipegangnya.
 
 ### Buat dan Edit User
 
 ![Edit user](screenshots/user-form.png)
 
-Admin dapat mengatur username, nama tampilan, password, dan status Platform Admin. Password disimpan sebagai hash Argon2id dan harus terdiri dari 8 sampai 72 karakter. Username yang sudah dipakai menghasilkan 409. Mengganti password atau mencabut status admin akan mencabut session user tersebut, sedangkan menjadikan user sebagai admin akan merotasi session-nya pada request berikutnya. Admin tidak dapat menonaktifkan akunnya sendiri atau mencabut status adminnya sendiri.
+Admin dapat mengatur username, nama tampilan, password, dan status Platform Admin. Password disimpan sebagai hash Argon2id dan harus terdiri dari 8 sampai 72 karakter. Username yang sudah dipakai ditolak. Mengganti password atau mencabut status admin akan mencabut session user tersebut, sedangkan menjadikan user sebagai admin akan merotasi session-nya pada request berikutnya. Admin tidak dapat menonaktifkan akunnya sendiri atau mencabut status adminnya sendiri.
 
 ### Daftar Group
 
 ![Daftar group](screenshots/groups.png)
 
-Daftar group berisi tautan ke halaman edit setiap group dan pengaturan akses database-nya.
+Daftar group berisi tautan ke halaman detail setiap group.
 
-### Edit Group dan Anggota
+### Detail Group, Anggota, dan Akses Database
 
-![Edit group](screenshots/group-edit.png)
+![Detail group](screenshots/group-detail.png)
 
-Di halaman ini admin dapat mengganti nama group, menambah atau mengeluarkan anggota, dan menghapus group. Menambah anggota menaikkan privilege version anggota tersebut sehingga session-nya dirotasi, sedangkan mengeluarkan anggota atau menghapus group langsung mencabut session pengguna yang terdampak. Menambahkan anggota yang sama dua kali menghasilkan 409.
+Di halaman ini admin mengganti nama dan deskripsi group, menambah atau mengeluarkan anggota, memilih leader, dan mengarsipkan group. Leader harus anggota aktif group tersebut, dan dialah yang memberi approval migration atas nama group. Menambah anggota menaikkan privilege version anggota tersebut sehingga session-nya dirotasi, sedangkan mengeluarkan anggota atau mengarsipkan group langsung mencabut session pengguna yang terdampak.
 
-### Akses Database Group
-
-![Akses database group](screenshots/database-access.png)
-
-Admin memberikan akses View atau Edit ke database aktif kepada sebuah group, mengubah tingkatnya, atau mencabutnya. Memberikan atau menaikkan akses akan merotasi session anggota, sedangkan menurunkan atau mencabut akses akan mencabut session mereka.
+Bagian akses database memberikan akses View atau Edit ke database aktif, mengubah tingkatnya, atau mencabutnya. Memberikan atau menaikkan akses akan merotasi session anggota, sedangkan menurunkan atau mencabut akses akan mencabut session mereka.
 
 ### Daftar Koneksi Database
 
