@@ -134,6 +134,9 @@ func TestHistoryHidesOnlySuccessfulExecutionPairs(t *testing.T) {
 			if execution.ID == 4 && execution.SQLSnapshot != "SQL B asli" {
 				t.Fatal("history harus membaca snapshot execution, bukan SQL definisi")
 			}
+			if execution.MigrationTitle == "" || execution.ExecutedByName == "" {
+				t.Fatalf("history harus bawa judul migration dan nama pelaksana: %+v", execution)
+			}
 		}
 		if !reflect.DeepEqual(ids, tc.ids) || body.Meta.HasMore != tc.hasMore || body.Data == nil {
 			t.Fatalf("%s: ids=%v has_more=%v, ingin %v %v", tc.query, ids, body.Meta.HasMore, tc.ids, tc.hasMore)

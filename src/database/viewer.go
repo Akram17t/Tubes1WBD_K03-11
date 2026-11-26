@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"strings"
+	"time"
 )
 
 const MaxPageSize = 500
@@ -253,12 +254,15 @@ func GetTableData(ctx context.Context, db *sql.DB, schema, table string, limit, 
 			return nil, err
 		}
 		for i, value := range values {
-			if raw, ok := value.([]byte); ok {
+			switch v := value.(type) {
+			case []byte:
 				if columnTypes[i].DatabaseTypeName() == "BYTEA" {
-					values[i] = `\x` + hex.EncodeToString(raw)
+					values[i] = `\x` + hex.EncodeToString(v)
 				} else {
-					values[i] = string(raw)
+					values[i] = string(v)
 				}
+			case time.Time:
+				values[i] = formatTime(columnTypes[i].DatabaseTypeName(), v)
 			}
 		}
 		data.Rows = append(data.Rows, values)
@@ -271,6 +275,19 @@ func GetTableData(ctx context.Context, db *sql.DB, schema, table string, limit, 
 		data.Rows = data.Rows[:limit]
 	}
 	return data, nil
+}
+
+// formatTime nampilin tanggal/waktu kayak teks PostgreSQL, bukan RFC3339 bawaan JSON.
+// DATE ga punya jam, TIMESTAMP ga punya zona, TIMESTAMPTZ tetap bawa offset-nya
+func formatTime(typeName string, value time.Time) string {
+	switch typeName {
+	case "DATE":
+		return value.Format(time.DateOnly)
+	case "TIMESTAMP":
+		return value.Format("2006-01-02 15:04:05.999999")
+	default:
+		return value.Format("2006-01-02 15:04:05.999999Z07:00")
+	}
 }
 
 func checkSchema(ctx context.Context, db *sql.DB, schema string) error {

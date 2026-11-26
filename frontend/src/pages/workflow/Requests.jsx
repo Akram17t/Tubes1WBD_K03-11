@@ -56,7 +56,7 @@ export function Requests() {
                   <td>
                     <ReviewStatusBadge status={r.review_status} />
                   </td>
-                  <td>{actorName(r.requested_by, user)}</td>
+                  <td>{actorName(r.requested_by, user, r.requested_by_name)}</td>
                   <td className="small text-nowrap">{formatTime(r.created_at)}</td>
                 </tr>
               ))}

@@ -56,6 +56,9 @@ type Execution struct {
 	HistorySequence   *int64
 	SQLState          *string
 	Progress          JobProgress
+	// label buat tampilan, cuma diisi query history
+	MigrationTitle string
+	ExecutedByName string
 }
 
 const migrationColumns = `id, database_id, version, title, description,
@@ -467,9 +470,10 @@ func discardConnection(conn *sql.Conn) {
 }
 
 // scanExecution dipakai pembaca M1 dan history M2 agar pemetaan snapshot serta metadata tidak digandakan.
-func scanExecution(row interface{ Scan(...any) error }) (*Execution, error) {
+// extra nampung kolom tambahan setelah executionColumns, urutannya sama kayak di SELECT
+func scanExecution(row interface{ Scan(...any) error }, extra ...any) (*Execution, error) {
 	var execution Execution
-	err := row.Scan(
+	err := row.Scan(append([]any{
 		&execution.ID, &execution.MigrationID, &execution.ExecutedBy,
 		&execution.SQLSnapshot, &execution.Status, &execution.StartedAt,
 		&execution.FinishedAt, &execution.ErrorMessage,
@@ -478,7 +482,7 @@ func scanExecution(row interface{ Scan(...any) error }) (*Execution, error) {
 		&execution.TargetExecutionID, &execution.HistorySequence, &execution.SQLState,
 		&execution.Progress.TotalRows, &execution.Progress.CommittedRows, &execution.Progress.CommittedBatches,
 		&execution.Progress.RevertedRows, &execution.Progress.RevertedBatches, &execution.Progress.LastCursor,
-	)
+	}, extra...)...)
 	if err != nil {
 		return nil, err
 	}

@@ -10,6 +10,7 @@ it('formatTime aman buat null dan string aneh', () => {
 it('actorName nandain user login sebagai Kamu', () => {
   expect(actorName('1', { id: '1' })).toBe('Kamu')
   expect(actorName('7', { id: '1' })).toBe('User #7')
+  expect(actorName('7', { id: '1' }, 'Akram')).toBe('Akram')
   expect(actorName(null, { id: '1' })).toBe('—')
 })
 

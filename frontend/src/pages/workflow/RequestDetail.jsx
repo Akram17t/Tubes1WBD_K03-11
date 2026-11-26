@@ -125,7 +125,7 @@ export function RequestDetail() {
               <h3 className="h6">Info</h3>
               <dl className="row mb-0">
                 <dt className="col-5 fw-normal text-secondary">Pengaju</dt>
-                <dd className="col-7">{actorName(r.requested_by, user)}</dd>
+                <dd className="col-7">{actorName(r.requested_by, user, r.requested_by_name)}</dd>
                 <dt className="col-5 fw-normal text-secondary">Revisi</dt>
                 <dd className="col-7">{r.revision}</dd>
                 {r.target_execution_id && (
@@ -224,7 +224,7 @@ function Approvals({ request, me }) {
                     )}
                     {a.can_approve && <span className="badge text-bg-info ms-1">Kamu bisa menyetujui</span>}
                   </td>
-                  <td>{actorName(a.approved_by, me)}</td>
+                  <td>{actorName(a.approved_by, me, a.approved_by_name)}</td>
                   <td className="text-nowrap">{formatTime(a.approved_at)}</td>
                 </tr>
               ))}

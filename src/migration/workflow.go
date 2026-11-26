@@ -56,6 +56,7 @@ type MigrationRequest struct {
 	SourceJobID       *int64             `json:"source_job_id,string"`
 	ReviewStatus      string             `json:"review_status"`
 	RequestedBy       int64              `json:"requested_by,string"`
+	RequestedByName   string             `json:"requested_by_name,omitempty"` // cuma diisi list dan detail
 	Snapshot          DefinitionSnapshot `json:"snapshot"`
 	CreatedAt         time.Time          `json:"created_at"`
 	UpdatedAt         time.Time          `json:"updated_at"`
@@ -66,6 +67,7 @@ type RequestApproval struct {
 	GroupID          int64      `json:"group_id,string"`
 	GroupName        string     `json:"group_name"`
 	ApprovedBy       *int64     `json:"approved_by,string"`
+	ApprovedByName   *string    `json:"approved_by_name"`
 	ApprovedAt       *time.Time `json:"approved_at"`
 	WaitingForLeader bool       `json:"waiting_for_leader"`
 	CanApprove       bool       `json:"can_approve"`
@@ -108,6 +110,9 @@ type workflowQueryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
+
+// nama pengaju ikut dibaca di list dan detail biar reviewer tau siapa yang ngajuin
+const requestedByName = `, (SELECT display_name FROM users WHERE id = requested_by)`
 
 const requestColumns = `id, database_id, migration_id, revision, operation,
 	target_execution_id, source_job_id, review_status, requested_by,
@@ -155,12 +160,13 @@ func workflowAuthorize(ctx context.Context, db workflowQueryer, user *auth.User,
 }
 
 // scanRequest membaca snapshot dan mengubah waktu ke UTC tanpa mengekspos tipe nullable SQL.
-func scanRequest(row interface{ Scan(...any) error }) (*MigrationRequest, error) {
+// extra nampung kolom tambahan setelah requestColumns, urutannya sama kayak di SELECT
+func scanRequest(row interface{ Scan(...any) error }, extra ...any) (*MigrationRequest, error) {
 	var request MigrationRequest
 	var snapshot []byte
-	err := row.Scan(&request.ID, &request.DatabaseID, &request.MigrationID, &request.Revision,
+	err := row.Scan(append([]any{&request.ID, &request.DatabaseID, &request.MigrationID, &request.Revision,
 		&request.Operation, &request.TargetExecutionID, &request.SourceJobID, &request.ReviewStatus,
-		&request.RequestedBy, &snapshot, &request.CreatedAt, &request.UpdatedAt, &request.SubmittedAt)
+		&request.RequestedBy, &snapshot, &request.CreatedAt, &request.UpdatedAt, &request.SubmittedAt}, extra...)...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

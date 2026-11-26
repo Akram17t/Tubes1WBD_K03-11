@@ -158,3 +158,18 @@ func TestViewerJSONAndGeneratedTableLinks(t *testing.T) {
 		}
 	}
 }
+
+// tanggal dan waktu tampil kayak teks PostgreSQL: DATE tanpa jam, TIMESTAMP tanpa zona
+func TestViewerFormatsDateAndTime(t *testing.T) {
+	f := testdb.New(t)
+	testdb.Exec(t, f.Target, `CREATE TABLE public.times (d date, ts timestamp, tz timestamptz);
+		INSERT INTO public.times VALUES ('1994-01-18', '2026-11-26 19:45:30.5', '2026-11-26 12:45:30+00')`)
+	data, err := database.GetTableData(context.Background(), f.Target, "public", "times", 50, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := data.Rows[0]
+	if row[0] != "1994-01-18" || row[1] != "2026-11-26 19:45:30.5" || !strings.HasPrefix(row[2].(string), "2026-11-26 ") {
+		t.Fatalf("format tanggal/waktu: %#v", row)
+	}
+}

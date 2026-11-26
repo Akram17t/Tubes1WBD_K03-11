@@ -55,8 +55,9 @@ export function formatTime(value) {
   return date.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })
 }
 
-// nama aktor: "Kamu" kalau ID-nya sama dengan user login, selain itu "User #id"
-export function actorName(id, me) {
+// user login ditandai "Kamu"; selain itu pakai nama dari API, fallback ke ID kalau API ga ngirim nama
+export function actorName(id, me, name) {
   if (!id) return '—'
-  return id === me?.id ? 'Kamu' : `User #${id}`
+  if (id === me?.id) return 'Kamu'
+  return name || `User #${id}`
 }
