@@ -16,9 +16,10 @@ export function DatabaseLayout() {
   if (database.error) return <ErrorAlert error={database.error} onRetry={database.reload} />
 
   const db = database.data
-  const tab = ({ isActive }) => 'nav-link' + (isActive ? ' active' : '')
-  // tab Struktur tetap aktif waktu lagi buka detail tabel
-  const structureActive = pathname === `/databases/${db.id}` || pathname.startsWith(`/databases/${db.id}/tables/`)
+  // halaman turunan ikut nyalain tab induknya: tabel -> Struktur, job -> Request, eksekusi -> History
+  const section = pathname.slice(`/databases/${db.id}`.length).split('/')[1] || ''
+  const activeTab = { '': '', tables: '', jobs: 'requests', executions: 'history' }[section] ?? section
+  const tab = (path) => 'nav-link px-2 px-sm-3' + (activeTab === path ? ' active' : '')
   return (
     <>
       <PageHeader title={db.name} back={{ to: '/databases', label: 'Daftar database' }}>
@@ -27,7 +28,7 @@ export function DatabaseLayout() {
       <DatabaseStatusAlert database={db} />
       <ul className="nav nav-tabs mb-3 flex-nowrap overflow-x-auto overflow-y-hidden">
         <li className="nav-item">
-          <NavLink end to={`/databases/${db.id}`} className={() => tab({ isActive: structureActive })}>
+          <NavLink end to={`/databases/${db.id}`} className={tab('')}>
             Struktur
           </NavLink>
         </li>
@@ -37,7 +38,7 @@ export function DatabaseLayout() {
           ['history', 'History'],
         ].map(([path, label]) => (
           <li className="nav-item" key={path}>
-            <NavLink to={`/databases/${db.id}/${path}`} className={tab}>
+            <NavLink to={`/databases/${db.id}/${path}`} className={tab(path)}>
               {label}
             </NavLink>
           </li>

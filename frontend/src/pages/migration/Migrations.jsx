@@ -37,9 +37,9 @@ export function Migrations() {
               <tr>
                 <th>#</th>
                 <th>Judul</th>
-                <th>Mode</th>
+                <th className="d-none d-sm-table-cell">Mode</th>
                 <th>Posisi</th>
-                <th>Diubah</th>
+                <th className="d-none d-md-table-cell">Diubah</th>
               </tr>
             </thead>
             <tbody>
@@ -56,11 +56,11 @@ export function Migrations() {
                     {m.irreversible && <span className="badge text-bg-danger ms-1">Irreversible</span>}
                     {m.locked_at && <span className="badge text-bg-light border ms-1">Terkunci</span>}
                   </td>
-                  <td className="small">{m.mode}</td>
+                  <td className="small d-none d-sm-table-cell">{m.mode}</td>
                   <td>
                     <PositionBadge position={m.position} />
                   </td>
-                  <td className="small text-nowrap">{formatTime(m.updated_at)}</td>
+                  <td className="small text-nowrap d-none d-md-table-cell">{formatTime(m.updated_at)}</td>
                 </tr>
               ))}
             </tbody>
