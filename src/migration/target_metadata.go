@@ -67,6 +67,17 @@ var targetMetadataStatements = []string{
 	)`,
 	`CREATE INDEX IF NOT EXISTS _dbplatform_batch_scope_batch_idx
 		ON public._dbplatform_batch_scope (job_id, batch_number) WHERE batch_number IS NOT NULL`,
+
+	// Satu baris per job batch. scope_job_id menunjuk job pemilik scope: dirinya sendiri untuk up,
+	// dan scope asli untuk forward, rollback, serta kompensasi. Baris ini juga menandai scope up
+	// sudah dibekukan, termasuk ketika tabelnya kosong.
+	`CREATE TABLE IF NOT EXISTS public._dbplatform_batch_jobs (
+		job_id BIGINT PRIMARY KEY,
+		scope_job_id BIGINT NOT NULL,
+		total_rows BIGINT NOT NULL CHECK (total_rows >= 0),
+		total_batches INTEGER NOT NULL CHECK (total_batches >= 0),
+		registered_at TIMESTAMPTZ NOT NULL DEFAULT now()
+	)`,
 }
 
 // EnsureTargetMetadata membuat atau melengkapi metadata internal pada database target.
