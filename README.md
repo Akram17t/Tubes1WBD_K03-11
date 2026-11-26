@@ -1,12 +1,30 @@
-# Tugas Besar IF3110 Pengembangan Aplikasi Berbasis Web: Milestone 1
+# Tugas Besar IF3110 Pengembangan Aplikasi Berbasis Web: Milestone 2
 
 Pada tugas besar ini, kami diminta untuk membuat Database Management Platform berbasis web yang mengatur akses pengguna ke database PostgreSQL bersama. Pengguna tidak diberi kredensial database secara langsung. Setiap pengguna harus login ke platform, lalu platform yang menentukan apa saja yang boleh dilihat atau diubah oleh pengguna tersebut.
 
-Platform Admin mengelola user, group, koneksi database target, dan pemberian akses. Akses ke sebuah database selalu diberikan kepada group, tidak pernah langsung kepada user, dengan dua tingkatan: **View**, yang memungkinkan melihat schema, data tabel, dan riwayat migration, serta **Edit**, yang juga memungkinkan membuat, mengubah, dan menjalankan migration. Jika seorang user tergabung dalam beberapa group, yang berlaku adalah tingkat akses tertinggi. Perubahan schema hanya dilakukan melalui migration, yang dijalankan di dalam transaction, diserialisasi per database, dan dicatat beserta setiap percobaan eksekusinya.
+Platform Admin mengelola user, group, koneksi database target, dan pemberian akses. Akses ke sebuah database selalu diberikan kepada group, tidak pernah langsung kepada user, dengan dua tingkatan: **View**, yang memungkinkan melihat schema, data tabel, dan riwayat migration, serta **Edit**, yang juga memungkinkan membuat, mengubah, dan menjalankan migration. Jika seorang user tergabung dalam beberapa group, yang berlaku adalah tingkat akses tertinggi. Perubahan schema dan data hanya dilakukan melalui migration yang memiliki SQL up dan SQL down.
+
+Pada Milestone 2, menjalankan migration selalu melalui request yang harus disetujui leader setiap group yang punya akses ke database tersebut. Setelah disetujui, migration masuk antrean dan dijalankan oleh proses worker terpisah, sehingga request HTTP tidak menunggu SQL selesai. Migration besar dapat dijalankan per batch agar lock tabel singkat, dilanjutkan (resume) jika berhenti di tengah, atau dikompensasi. Setiap percobaan eksekusi tercatat di history, dan rollback maupun forward mengikuti urutan linear.
+
+## Arsitektur
+
+```
+Browser (SPA React) --/api JSON--> Server API (Go, APP_ROLE=api) --+--> PostgreSQL platform
+                                                                    |    (user, group, request, antrean job, history)
+                                    Worker (Go, APP_ROLE=worker) ---+
+                                         |
+                                         +--> PostgreSQL target (database yang dikelola)
+```
+
+- **SPA** di `frontend/` hanya berbicara dengan API JSON dan tidak pernah terhubung langsung ke PostgreSQL. Hasil build-nya disajikan oleh server API.
+- **Server API** menangani login, session, CSRF, administrasi, viewer, serta pengajuan dan approval migration. Eksekusi hanya dimasukkan ke antrean.
+- **Antrean** berupa tabel di database platform yang di-claim worker dengan `FOR UPDATE SKIP LOCKED`, tanpa broker tambahan.
+- **Worker** mengambil job, mengunci database target, memeriksa ulang aturan dan izin, lalu menjalankan SQL dan mencatat hasil serta progress per batch. Satu database dijalankan serial, database berbeda dapat berjalan paralel.
 
 ## Prerequisites
 
 - Go 1.26
+- Node.js 22 (untuk build SPA)
 - Docker (untuk menjalankan PostgreSQL 16)
 - Git
 
@@ -97,7 +115,26 @@ Lalu buka `.env` dan ubah nilai berikut:
 
    Akun admin hanya dibuat sekali, yaitu saat aplikasi pertama kali dijalankan. Mengubah `ADMIN_PASSWORD` setelahnya tidak berpengaruh; ganti password melalui halaman **User**.
 
-Nilai lainnya (`PLATFORM_DATABASE_URL` dan pengaturan session) sudah sesuai dengan setup Docker di atas.
+Nilai lainnya (`PLATFORM_DATABASE_URL`, pengaturan session, dan pengaturan worker) sudah sesuai dengan setup Docker di atas. Variabel yang dapat diatur:
+
+| Variabel | Default | Kegunaan |
+| :-- | :-- | :-- |
+| `APP_ROLE` | `api` | Peran proses: `api` atau `worker` |
+| `WORKER_CONCURRENCY` | `2` | Jumlah job yang dikerjakan paralel oleh satu worker |
+| `WORKER_POLL_INTERVAL` | `1s` | Jeda worker memeriksa antrean |
+| `WORKER_HEARTBEAT_INTERVAL` | `5s` | Interval worker menandai job masih dikerjakan |
+| `JOB_STALE_AFTER` | `30s` | Batas heartbeat basi sebelum recovery memeriksa job |
+| `BATCH_SIZE_DEFAULT` / `BATCH_SIZE_MAX` | `1000` / `10000` | Ukuran batch bawaan dan maksimum |
+| `LOG_LEVEL` | `info` | Level application log (`debug`, `info`, `warn`, `error`) |
+| `TRACE_EXPORTER` | `console` | `console` menulis span ke stderr, `none` mematikannya |
+
+### Upgrade dari Milestone 1
+
+Database platform milik Milestone 1 dapat dipakai tanpa dibuat ulang. Jalankan file schema yang belum pernah dijalankan (`011` sampai `015`) sekali saja; data user, group, koneksi, dan riwayat migration lama tetap ada:
+
+```sh
+for f in sql/011_*.sql sql/012_*.sql sql/013_*.sql sql/014_*.sql sql/015_*.sql; do docker exec -i dbplatform-pg psql -q -v ON_ERROR_STOP=1 -U postgres -d platform < "$f"; done
+```
 
 ### 5. Jalankan aplikasi
 
@@ -270,6 +307,70 @@ Sebuah koneksi menyimpan host, port, nama database, username, password, dan SSL 
 
 Session disimpan di server, sedangkan browser hanya menyimpan token acak di cookie yang bersifat HttpOnly dan SameSite=Lax (serta Secure di production). Database hanya menyimpan hash SHA-256 dari setiap token. Token dirotasi saat login, setiap interval rotasi, dan setiap kali hak akses pengguna meningkat. Token lama tetap berlaku selama grace period untuk menangani request yang berjalan bersamaan, dan rotasi tidak pernah memperpanjang absolute timeout. Aplikasi menolak berjalan jika interval rotasi tidak lebih pendek dari idle timeout, atau grace period tidak lebih pendek dari interval rotasi. Setiap request API yang mengubah data membawa token CSRF di header `X-CSRF-Token`, dan login dilindungi dengan pemeriksaan header Origin.
 
+### Logging dan Tracing
+
+Kedua proses menulis application log berformat JSON ke stdout dan span OpenTelemetry ke stderr. Setiap request API mendapat `request_id`, dan seluruh query SQL (platform maupun target, termasuk query read-only) dicatat dengan parameter yang disamarkan. Saat request di-execute, trace context W3C disimpan bersama job, lalu worker melanjutkannya, sehingga satu `trace_id` menghubungkan request HTTP sampai commit setiap batch di worker. Password, cookie, token session, token CSRF, dan DSN tidak pernah ditulis ke log.
+
+Contoh dari satu job migration batch (200 row, 2 batch). Log API saat tombol eksekusi ditekan:
+
+```json
+{"time":"2026-11-26T20:17:24.192405488+07:00","level":"INFO","event":"workflow.execute","database_id":1,"request_entry_id":1,"status":"queued","request_id":"http-727a19ff6c3f74b7","actor_id":"2","trace_id":"d091c6993164202b79e49721497a03f5","span_id":"33329ee664694544"}
+{"time":"2026-11-26T20:17:24.19070503+07:00","level":"INFO","event":"job.enqueue_staged","job_id":1,"request_entry_id":1,"database_id":1,"migration_id":1,"revision":1,"operation":"up","execution_actor_id":2,"status":"queued","request_id":"http-727a19ff6c3f74b7","actor_id":"2","trace_id":"d091c6993164202b79e49721497a03f5","span_id":"7da9230e790546d4"}
+```
+
+Log worker untuk job yang sama, dengan `trace_id` yang sama:
+
+```json
+{"time":"2026-11-26T20:17:25.194421279+07:00","level":"INFO","event":"job.claimed","job_id":1,"request_entry_id":1,"database_id":1,"migration_id":1,"revision":1,"operation":"up","attempt":0,"worker_id":"fedora-75760-96856287d318","status":"running","queue_wait_ms":1027,"actor_id":"2","trace_id":"d091c6993164202b79e49721497a03f5","span_id":"af03c29f82fd43cd"}
+{"time":"2026-11-26T20:17:26.992494099+07:00","level":"INFO","event":"sql.query","query":"UPDATE public.players SET squad_number = squad_number WHERE id = ANY($1::bigint[])","params":["$1:[]int64"],"duration_ms":2.023,"rows":100,"status":"ok","db":"target","actor_id":"2","trace_id":"d091c6993164202b79e49721497a03f5","span_id":"c8daf20e920f533c"}
+{"time":"2026-11-26T20:17:26.994557154+07:00","level":"INFO","event":"execution.batch_committed","job_id":1,"request_entry_id":1,"database_id":1,"migration_id":1,"revision":1,"operation":"up","attempt":1,"execution_id":1,"worker_id":"fedora-75760-96856287d318","batch_number":1,"direction":"up","rows":100,"actor_id":"2","trace_id":"d091c6993164202b79e49721497a03f5","span_id":"40fa11112d494a5a"}
+{"time":"2026-11-26T20:17:27.023054518+07:00","level":"INFO","event":"job.attempt_finished","job_id":1,"request_entry_id":1,"database_id":1,"migration_id":1,"revision":1,"operation":"up","attempt":1,"worker_id":"fedora-75760-96856287d318","status":"success","error_code":"","actor_id":"2","trace_id":"d091c6993164202b79e49721497a03f5","span_id":"9933721f0cde5bbe"}
+```
+
+Susunan span dalam trace tersebut (span `sql.query` di setiap langkah tidak ditampilkan):
+
+```
+POST /api/databases/:database_id/requests/:request_id/execute   [api]
+└─ workflow.execute                                    25.8 ms  [api]
+   └─ workflow.enqueue                                  8.5 ms  [api]
+      ├─ queue.wait                                  1027.7 ms  [worker]
+      └─ worker.job                                  1828.9 ms  [worker]
+         ├─ worker.lock_wait                           17.1 ms
+         ├─ worker.revalidate                        1723.9 ms
+         ├─ worker.execute                             78.5 ms
+         │  ├─ execution.batch (batch 1)                7.7 ms
+         │  │  └─ execution.commit                      0.7 ms
+         │  ├─ execution.batch (batch 2)                5.7 ms
+         │  │  └─ execution.commit                      0.7 ms
+         │  └─ execution.commit                         0.5 ms
+         └─ worker.finalize                             7.0 ms
+```
+
+Span `execution.batch` untuk batch pertama, dengan `SpanID` yang sama seperti `span_id` pada log `execution.batch_committed` di atas:
+
+```json
+{
+  "Name": "execution.batch",
+  "SpanContext": { "TraceID": "d091c6993164202b79e49721497a03f5", "SpanID": "40fa11112d494a5a" },
+  "Parent": { "TraceID": "d091c6993164202b79e49721497a03f5", "SpanID": "fd3e4881b1a5e38f" },
+  "StartTime": "2026-11-26T20:17:26.986818308+07:00",
+  "EndTime": "2026-11-26T20:17:26.994543879+07:00",
+  "Attributes": [
+    { "Key": "job_id", "Value": { "Type": "INT64", "Value": 1 } },
+    { "Key": "execution_id", "Value": { "Type": "INT64", "Value": 1 } },
+    { "Key": "database_id", "Value": { "Type": "INT64", "Value": 1 } },
+    { "Key": "attempt", "Value": { "Type": "INT64", "Value": 1 } },
+    { "Key": "operation", "Value": { "Type": "STRING", "Value": "up" } },
+    { "Key": "batch_number", "Value": { "Type": "INT64", "Value": 1 } },
+    { "Key": "direction", "Value": { "Type": "STRING", "Value": "up" } },
+    { "Key": "ids", "Value": { "Type": "INT64", "Value": 100 } }
+  ],
+  "Status": { "Code": "Unset", "Description": "" }
+}
+```
+
+Untuk menyimpan log dan span secara terpisah saat menjalankan aplikasi: `APP_ROLE=worker go run ./src > worker.log 2> worker-span.json`.
+
 ## Testing
 
 Integration test membutuhkan dua database khusus test yang namanya mengandung kata `test`. Test mengosongkan data setiap kali dijalankan, jadi jangan pernah mengarahkannya ke database demo.
@@ -300,6 +401,12 @@ go test -count=1 ./...
 
 Tanpa kedua variabel tersebut, integration test akan dilewati.
 
+Test frontend (fungsi bantu SPA dan mock API untuk development) dijalankan terpisah:
+
+```sh
+cd frontend && npm ci && npm test
+```
+
 ## Built With
 
 - [Go](https://go.dev/) - Bahasa pemrograman
@@ -319,7 +426,13 @@ Tanpa kedua variabel tersebut, integration test akan dilewati.
 | Reinsen Silitonga       | 13524093 |
 | Manuel Thimoty Silalahi | 13524102 |
 
-### Fitur
+### Fitur Milestone 2
+
+- SPA seluruh halaman (desktop dan mobile), API auth dan administrasi user, session dan CSRF, fondasi logging dan tracing: Reinsen
+- Pengajuan dan approval migration, leader group, API history dan Hide rollback, API group, akses, koneksi, dan viewer, dataset dan benchmark: Nashiruddin Akram
+- Definisi migration dan validasi SQL, up/down/irreversible, aturan linear rollback dan forward, antrean dan worker, eksekusi, retry, dan recovery, batch, resume, dan kompensasi: Manuel Thimoty
+
+### Fitur Milestone 1
 
 - Login, logout, dan manajemen session: Reinsen
 - Rotasi session dan perlindungan CSRF: Reinsen
@@ -336,6 +449,8 @@ Tanpa kedua variabel tersebut, integration test akan dilewati.
 - users, sessions, session_tokens: Reinsen
 - groups, user_groups, database_connections, group_database_access: Manuel Thimoty
 - migrations, migration_executions: Nashiruddin Akram
+- Leader dan arsip group (`011`), request dan approval (`013`): Nashiruddin Akram
+- Definisi migration (`012`), job (`014`), history dan batch attempt (`015`): Manuel Thimoty
 
 ## Acknowledgments
 
