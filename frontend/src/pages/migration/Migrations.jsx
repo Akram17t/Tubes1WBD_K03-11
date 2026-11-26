@@ -20,7 +20,7 @@ export function Migrations() {
     <>
       <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
         <p className="small text-secondary mb-0 me-auto">
-          Definisi berisi SQL up/down. Definisi dikunci setelah dipakai request, perubahan berikutnya jadi revisi baru.
+          Definisi berisi SQL up/down. Definisi dikunci setelah dipakai request; perbaikan berikutnya dibuat sebagai migration baru.
         </p>
         {database.access_level === 'edit' && (
           <Link to={`${base}/new`} className="btn btn-primary btn-sm">

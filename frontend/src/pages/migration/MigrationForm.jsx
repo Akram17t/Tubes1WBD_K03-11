@@ -95,7 +95,8 @@ export function MigrationForm() {
             <fieldset className="col-12 border rounded p-3">
               <legend className="float-none w-auto px-1 fs-6 mb-0">Konfigurasi batch</legend>
               <p className="form-text mt-0">
-                SQL memakai <code>$1</code> sebagai array ID batch, contoh <code>WHERE id = ANY($1::bigint[])</code>.
+                SQL up/down harus berbentuk <code>UPDATE schema.tabel SET ... WHERE kolom_key = ANY($1::bigint[])</code>, dengan schema, tabel, dan
+                kolom key sama seperti di bawah. <code>$1</code> diisi array ID tiap batch.
               </p>
               <div className="row g-2">
                 {[

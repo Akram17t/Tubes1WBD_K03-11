@@ -16,6 +16,8 @@ it('actorName nandain user login sebagai Kamu', () => {
 it('progressPercent dari row ter-commit, null kalau total belum diketahui', () => {
   expect(progressPercent({ total_rows: 10000, committed_rows: 3000 })).toBe(30)
   expect(progressPercent({ total_rows: null, committed_rows: 0 })).toBeNull()
+  // kompensasi sukses: committed 0 tapi semua row sudah dibatalkan
+  expect(progressPercent({ total_rows: 1000, committed_rows: 0, reverted_rows: 1000 }, 'compensate')).toBe(100)
   expect(isJobActive('running')).toBe(true)
   expect(isJobActive('outcome_unknown')).toBe(false)
 })
