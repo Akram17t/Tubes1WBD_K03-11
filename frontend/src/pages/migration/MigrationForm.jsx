@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useOutletContext, useParams } from 'react-router'
 import { api } from '../../api/client.js'
-import { ErrorAlert, Loading } from '../../components/StateView.jsx'
+import { ErrorAlert, Forbidden, Loading } from '../../components/StateView.jsx'
 import { useAction, useApi } from '../../hooks/useApi.js'
 
 const EMPTY_BATCH = { schema: 'public', table: '', key_column: 'id', batch_size: 1000 }
@@ -26,8 +26,12 @@ export function MigrationForm() {
     if (m) setForm({ ...EMPTY, ...m, description: m.description || '', sql_down: m.sql_down || '', irreversible_reason: m.irreversible_reason || '', batch_config: m.batch_config || EMPTY_BATCH })
   }, [current.data])
 
+  // dibuka lewat URL langsung tanpa hak: kasih tau dari awal, jangan biarin ngisi form dulu baru ditolak
+  if (database.access_level !== 'edit') return <Forbidden text="Membuat dan mengubah migration butuh akses Edit ke database ini." />
   if (editing && current.loading) return <Loading />
   if (editing && current.error) return <ErrorAlert error={current.error} onRetry={current.reload} />
+  if (editing && current.data && !current.data.allowed_actions.includes('edit'))
+    return <Forbidden text="Definisi ini sudah terkunci karena dipakai request. Buat migration baru untuk perbaikan." />
 
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
   const setBatch = (field) => (e) =>
