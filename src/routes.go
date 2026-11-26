@@ -4,8 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"html/template"
-	"os"
 	"path/filepath"
 
 	"tubes-wbd/src/admin"
@@ -35,19 +33,6 @@ func newRouter(deps Dependencies) (*gin.Engine, error) {
 		return nil, errors.New("target connection service is required")
 	}
 
-	pageTemplates, err := template.New("").ParseGlob(filepath.Join("templates", "*.html"))
-	if err != nil {
-		return nil, fmt.Errorf("load templates: %w", err)
-	}
-	staticDir := "static"
-	info, err := os.Stat(staticDir)
-	if err != nil {
-		return nil, fmt.Errorf("open static directory: %w", err)
-	}
-	if !info.IsDir() {
-		return nil, fmt.Errorf("static path is not a directory")
-	}
-
 	if deps.Config.AppEnv == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -60,12 +45,9 @@ func newRouter(deps Dependencies) (*gin.Engine, error) {
 		telemetry.TraceMiddleware(),
 		telemetry.AccessLogMiddleware(),
 		api.Recovery(),
-		api.SPA(filepath.Join("frontend", "dist")),
 	)
 	// hasil `npm run build` di frontend/dist; kalau belum ada, non-API tetap 404 biasa
 	router.NoRoute(api.NoRoute(filepath.Join("frontend", "dist")))
-	router.SetHTMLTemplate(pageTemplates)
-	router.Static("/static", staticDir)
 
 	auth.RegisterRoutes(router, deps.PlatformDB, auth.SessionConfig{
 		IdleTimeout:      deps.Config.SessionIdleTimeout,

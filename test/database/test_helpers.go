@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -104,15 +104,19 @@ func (f *Fixture) Router(t *testing.T) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.UseRawPath = true
-	r.LoadHTMLGlob("../../templates/*.html")
 	auth.RegisterRoutes(r, f.Platform, auth.SessionConfig{IdleTimeout: 30 * time.Minute, AbsoluteTimeout: 8 * time.Hour, RotationInterval: 15 * time.Minute, GracePeriod: 30 * time.Second})
 	return r
 }
 
+// Login masuk lewat API JSON dan balikin cookie session-nya.
 func Login(t *testing.T, r *gin.Engine, username string) *http.Cookie {
 	t.Helper()
-	w := Request(r, "POST", "/login", url.Values{"username": {username}, "password": {"test-password"}}, nil)
-	if w.Code != http.StatusSeeOther {
+	req := httptest.NewRequest("POST", auth.LoginPath, strings.NewReader(`{"username":"`+username+`","password":"test-password"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://example.com")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
 		t.Fatalf("login %s: %d", username, w.Code)
 	}
 	for _, cookie := range w.Result().Cookies() {
@@ -138,15 +142,19 @@ func Request(r *gin.Engine, method, path string, form url.Values, cookie *http.C
 	return w
 }
 
-var csrfPattern = regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
-
-func Token(t *testing.T, body string) string {
+// CSRF ngambil token CSRF session ini dari /api/auth/me, sama kayak SPA.
+func CSRF(t *testing.T, r *gin.Engine, cookie *http.Cookie) string {
 	t.Helper()
-	match := csrfPattern.FindStringSubmatch(body)
-	if match == nil {
-		t.Fatal("token CSRF tidak ditemukan")
+	w := Request(r, "GET", "/api/auth/me", nil, cookie)
+	var body struct {
+		Data struct {
+			CSRFToken string `json:"csrf_token"`
+		} `json:"data"`
 	}
-	return match[1]
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || body.Data.CSRFToken == "" {
+		t.Fatalf("token CSRF tidak ditemukan: %d %s", w.Code, w.Body.String())
+	}
+	return body.Data.CSRFToken
 }
 
 func Exec(t *testing.T, db *sql.DB, query string, args ...any) {

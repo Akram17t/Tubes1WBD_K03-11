@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
-	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -181,61 +179,6 @@ func TestStartupRecoveryRespectsLocksAndCommitTracking(t *testing.T) {
 	}
 }
 
-func TestExecuteRoutesCSRFPermissionsAndResult(t *testing.T) {
-	f := testdb.New(t)
-	r := f.Router(t)
-	migration.RegisterRoutes(r, f.Platform, f.Provider)
-	editor := testdb.Login(t, r, "editor")
-	viewer := testdb.Login(t, r, "viewer")
-	m := draft(t, f, `CREATE TABLE public.http_test (id int)`)
-	path := fmt.Sprintf("/databases/1/migrations/%d", m.ID)
-	page := testdb.Request(r, "GET", path, nil, editor)
-	if page.Code != 200 || !strings.Contains(page.Body.String(), "Jalankan migration") || !strings.Contains(page.Body.String(), "<!doctype html>") {
-		t.Fatalf("halaman detail: %d %s", page.Code, page.Body.String())
-	}
-	form := url.Values{"csrf_token": {testdb.Token(t, page.Body.String())}}
-	if w := testdb.Request(r, "POST", path+"/execute", nil, editor); w.Code != 403 {
-		t.Fatalf("CSRF kosong: %d", w.Code)
-	}
-	viewPage := testdb.Request(r, "GET", path, nil, viewer)
-	if viewPage.Code != 200 || strings.Contains(viewPage.Body.String(), "Jalankan migration") {
-		t.Fatal("viewer mendapat tombol execute")
-	}
-	viewForm := url.Values{"csrf_token": {testdb.Token(t, viewPage.Body.String())}}
-	if w := testdb.Request(r, "POST", path+"/execute", viewForm, viewer); w.Code != 403 {
-		t.Fatalf("viewer execute: %d", w.Code)
-	}
-	if w := testdb.Request(r, "POST", fmt.Sprintf("/databases/2/migrations/%d/execute", m.ID), form, editor); w.Code != 404 {
-		t.Fatalf("execute lintas database: %d", w.Code)
-	}
-	w := testdb.Request(r, "POST", path+"/execute", form, editor)
-	if w.Code != 303 || !strings.Contains(w.Header().Get("Location"), "/executions/") {
-		t.Fatalf("execute: %d %s", w.Code, w.Body.String())
-	}
-	result := testdb.Request(r, "GET", w.Header().Get("Location"), nil, viewer)
-	if result.Code != 200 || !strings.Contains(result.Body.String(), "success") {
-		t.Fatalf("hasil execute: %d %s", result.Code, result.Body.String())
-	}
-	if w := testdb.Request(r, "POST", path+"/execute", form, editor); w.Code != 409 {
-		t.Fatalf("execute ulang: %d", w.Code)
-	}
-	bad := draft(t, f, `SELECT * FROM missing_secret_table`)
-	badPath := fmt.Sprintf("/databases/1/migrations/%d/execute", bad.ID)
-	w = testdb.Request(r, "POST", badPath, form, editor)
-	if w.Code != 303 {
-		t.Fatalf("execute gagal: %d %s", w.Code, w.Body.String())
-	}
-	result = testdb.Request(r, "GET", w.Header().Get("Location"), nil, editor)
-	if result.Code != 200 || !strings.Contains(result.Body.String(), "SQLSTATE") {
-		t.Fatalf("halaman kegagalan: %d %s", result.Code, result.Body.String())
-	}
-	r2 := f.Router(t)
-	migration.RegisterRoutes(r2, f.Platform, nil)
-	if w := testdb.Request(r2, "POST", badPath, form, editor); w.Code != 503 {
-		t.Fatalf("koneksi belum disediakan: %d %s", w.Code, w.Body.String())
-	}
-}
-
 func TestExecuteRejectsLockedTargetAndPlatformAlias(t *testing.T) {
 	f := testdb.New(t)
 	m := draft(t, f, `INSERT INTO public.teams VALUES (99,'Tidak boleh dijalankan')`)
@@ -269,89 +212,7 @@ func TestExecuteRejectsLockedTargetAndPlatformAlias(t *testing.T) {
 	}
 }
 
-func TestRecoverRouteChecksPermissionsAndDoesNotRepeatSQL(t *testing.T) {
-	f := testdb.New(t)
-	ctx := context.Background()
-	r := f.Router(t)
-	migration.RegisterRoutes(r, f.Platform, f.Provider)
-	editor := testdb.Login(t, r, "editor")
-	viewer := testdb.Login(t, r, "viewer")
-	m := draft(t, f, `INSERT INTO public.teams VALUES (99,'Hanya sekali')`)
-	attempt, err := migration.ExecuteMigration(ctx, f.Platform, f.Target, f.Editor, 1, m.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	testdb.Exec(t, f.Platform, `UPDATE migrations SET status='running',version=NULL WHERE id=$1`, m.ID)
-	testdb.Exec(t, f.Platform, `UPDATE migration_executions SET status='running',finished_at=NULL WHERE id=$1`, attempt.ID)
-	path := fmt.Sprintf("/databases/1/migrations/%d", m.ID)
-	page := testdb.Request(r, "GET", path, nil, editor)
-	if page.Code != 200 || !strings.Contains(page.Body.String(), "Periksa hasil") {
-		t.Fatalf("aksi recovery tidak tersedia: %d %s", page.Code, page.Body.String())
-	}
-	current, err := migration.GetMigration(ctx, f.Platform, f.Editor, 1, m.ID)
-	if err != nil || current.Status != "running" {
-		t.Fatal("GET mengubah status migration")
-	}
-	form := url.Values{"csrf_token": {testdb.Token(t, page.Body.String())}}
-	if w := testdb.Request(r, "POST", path+"/recover", nil, editor); w.Code != 403 {
-		t.Fatalf("recovery tanpa CSRF: %d", w.Code)
-	}
-	view := testdb.Request(r, "GET", path, nil, viewer)
-	if strings.Contains(view.Body.String(), "Periksa hasil") {
-		t.Fatal("viewer mendapat aksi recovery")
-	}
-	if w := testdb.Request(r, "POST", path+"/recover", url.Values{"csrf_token": {testdb.Token(t, view.Body.String())}}, viewer); w.Code != 403 {
-		t.Fatalf("viewer dapat recovery: %d", w.Code)
-	}
-	if w := testdb.Request(r, "POST", fmt.Sprintf("/databases/2/migrations/%d/recover", m.ID), form, editor); w.Code != 404 {
-		t.Fatalf("recovery lintas database: %d", w.Code)
-	}
-	conn, err := f.Target.Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock(1)`); err != nil {
-		conn.Close()
-		t.Fatal(err)
-	}
-	w := testdb.Request(r, "POST", path+"/recover", form, editor)
-	conn.ExecContext(ctx, `SELECT pg_advisory_unlock(1)`)
-	conn.Close()
-	current, err = migration.GetMigration(ctx, f.Platform, f.Editor, 1, m.ID)
-	if w.Code != 303 || err != nil || current.Status != "running" {
-		t.Fatal("recovery mengubah eksekusi yang masih terkunci")
-	}
-	for range 2 {
-		if w := testdb.Request(r, "POST", path+"/recover", form, editor); w.Code != 303 || w.Header().Get("Location") != path {
-			t.Fatalf("recovery: %d %s", w.Code, w.Body.String())
-		}
-	}
-	current, err = migration.GetMigration(ctx, f.Platform, f.Editor, 1, m.ID)
-	if err != nil || current.Status != "success" || current.Version.Int64 != 1 {
-		t.Fatalf("status tidak pulih: %+v %v", current, err)
-	}
-	history, err := migration.GetExecutions(ctx, f.Platform, f.Editor, 1, m.ID)
-	if err != nil || len(history) != 1 {
-		t.Fatal("recovery mengeksekusi ulang SQL")
-	}
-	orphan := draft(t, f, `SELECT 1`)
-	testdb.Exec(t, f.Platform, `UPDATE migrations SET status='running' WHERE id=$1`, orphan.ID)
-	testdb.Exec(t, f.Platform, `INSERT INTO migration_executions(migration_id,executed_by,sql_snapshot) VALUES($1,1,'SELECT 1')`, orphan.ID)
-	orphanPath := fmt.Sprintf("/databases/1/migrations/%d/recover", orphan.ID)
-	r2 := f.Router(t)
-	migration.RegisterRoutes(r2, f.Platform, nil)
-	if w := testdb.Request(r2, "POST", orphanPath, form, editor); w.Code != 503 {
-		t.Fatalf("recovery tanpa target: %d", w.Code)
-	}
-	if w := testdb.Request(r, "POST", orphanPath, form, editor); w.Code != 303 {
-		t.Fatalf("recovery percobaan terputus: %d", w.Code)
-	}
-	current, err = migration.GetMigration(ctx, f.Platform, f.Editor, 1, orphan.ID)
-	if err != nil || current.Status != "failed" || current.Version.Valid {
-		t.Fatalf("hasil belum commit: %+v %v", current, err)
-	}
-}
-
+// koneksi dari ConnectionService dipakai bareng oleh viewer API, eksekusi, dan startup recovery
 func TestConnectionServiceViewerExecutionAndRecovery(t *testing.T) {
 	f := testdb.New(t)
 	service := f.Connections(t)
@@ -360,49 +221,31 @@ func TestConnectionServiceViewerExecutionAndRecovery(t *testing.T) {
 	defer cancel()
 	r := f.Router(t)
 	database.RegisterRoutes(r, f.Platform, service.Target)
-	database.RegisterAdminRoutes(r, service)
-	migration.RegisterRoutes(r, f.Platform, service.Target)
-	editor := testdb.Login(t, r, "editor")
 	viewer := testdb.Login(t, r, "viewer")
-	for _, path := range []string{"/databases/1/schema?table=players", "/databases/1/tables/players/data"} {
+	for _, path := range []string{"/api/databases/1/table?table=players", "/api/databases/1/data?table=players"} {
 		if w := testdb.Request(r, "GET", path, nil, viewer); w.Code != 200 {
 			t.Fatalf("viewer dengan koneksi B: %d %s", w.Code, w.Body.String())
 		}
 	}
-	page := testdb.Request(r, "GET", "/databases/1/migrations/new", nil, editor)
-	form := url.Values{"csrf_token": {testdb.Token(t, page.Body.String())}, "title": {"Integrasi koneksi"}, "sql_content": {`CREATE TABLE public.integrated_table (id int PRIMARY KEY); INSERT INTO public.integrated_table VALUES (1)`}}
-	w := testdb.Request(r, "POST", "/databases/1/migrations", form, editor)
-	if w.Code != 303 {
-		t.Fatalf("buat migration: %d %s", w.Code, w.Body.String())
-	}
-	path := w.Header().Get("Location")
-	w = testdb.Request(r, "POST", path+"/execute", form, editor)
-	if w.Code != 303 {
-		t.Fatalf("execute dengan koneksi B: %d %s", w.Code, w.Body.String())
-	}
-	if w := testdb.Request(r, "GET", "/databases/1/tables/integrated_table/data", nil, viewer); w.Code != 200 {
-		t.Fatalf("viewer hasil migration: %d", w.Code)
-	}
-	var id int64
-	if err := f.Platform.QueryRowContext(ctx, `SELECT id FROM migrations WHERE title='Integrasi koneksi'`).Scan(&id); err != nil {
+	m := draft(t, f, `CREATE TABLE public.integrated_table (id int PRIMARY KEY); INSERT INTO public.integrated_table VALUES (1)`)
+	target, err := service.Target(ctx, 1)
+	if err != nil {
 		t.Fatal(err)
 	}
-	markPending := func() {
-		t.Helper()
-		testdb.Exec(t, f.Platform, `UPDATE migrations SET status='running',version=NULL WHERE id=$1`, id)
-		testdb.Exec(t, f.Platform, `UPDATE migration_executions SET status='running',finished_at=NULL WHERE migration_id=$1`, id)
+	if _, err := migration.ExecuteMigration(ctx, f.Platform, target, f.Editor, 1, m.ID); err != nil {
+		t.Fatalf("execute dengan koneksi B: %v", err)
 	}
-	markPending()
+	if w := testdb.Request(r, "GET", "/api/databases/1/data?table=integrated_table", nil, viewer); w.Code != 200 {
+		t.Fatalf("viewer hasil migration: %d", w.Code)
+	}
+	testdb.Exec(t, f.Platform, `UPDATE migrations SET status='running',version=NULL WHERE id=$1`, m.ID)
+	testdb.Exec(t, f.Platform, `UPDATE migration_executions SET status='running',finished_at=NULL WHERE migration_id=$1`, m.ID)
 	if err := migration.RecoverRunning(ctx, f.Platform, service.Target); err != nil {
 		t.Fatalf("startup recovery dengan pool platform satu koneksi: %v", err)
 	}
-	markPending()
-	if w := testdb.Request(r, "POST", path+"/recover", form, editor); w.Code != 303 {
-		t.Fatalf("HTTP recovery dengan koneksi B: %d %s", w.Code, w.Body.String())
-	}
-	m, err := migration.GetMigration(ctx, f.Platform, f.Editor, 1, id)
-	if err != nil || m.Status != "success" || m.Version.Int64 != 1 {
-		t.Fatalf("hasil recovery integrasi: %+v %v", m, err)
+	recovered, err := migration.GetMigration(ctx, f.Platform, f.Editor, 1, m.ID)
+	if err != nil || recovered.Status != "success" || recovered.Version.Int64 != 1 {
+		t.Fatalf("hasil recovery integrasi: %+v %v", recovered, err)
 	}
 	var count int
 	if err := f.Target.QueryRowContext(ctx, `SELECT COUNT(*) FROM public.integrated_table`).Scan(&count); err != nil || count != 1 {
@@ -411,7 +254,8 @@ func TestConnectionServiceViewerExecutionAndRecovery(t *testing.T) {
 	if err := service.SetActive(ctx, &auth.User{ID: 4, IsPlatformAdmin: true}, 1, false); err != nil {
 		t.Fatal(err)
 	}
-	if w := testdb.Request(r, "GET", "/databases/1/schema", nil, viewer); w.Code != 303 {
+	// nonaktifin koneksi nyabut session yang punya akses, jadi viewer harus login ulang
+	if w := testdb.Request(r, "GET", "/api/databases/1/schemas", nil, viewer); w.Code != 401 {
 		t.Fatalf("session masih bisa memakai target nonaktif: %d", w.Code)
 	}
 }

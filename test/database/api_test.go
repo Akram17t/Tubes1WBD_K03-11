@@ -35,8 +35,7 @@ func TestConnectionAPI(t *testing.T) {
 	database.RegisterAdminRoutes(r, service)
 	admin := testdb.Login(t, r, "admin")
 	editor := testdb.Login(t, r, "editor")
-	page := testdb.Request(r, "GET", "/admin/databases/1/edit", nil, admin)
-	token := testdb.Token(t, page.Body.String())
+	token := testdb.CSRF(t, r, admin)
 	for _, tc := range []struct {
 		method, path, body, csrf string
 		cookie                   *http.Cookie

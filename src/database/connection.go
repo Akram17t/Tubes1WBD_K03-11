@@ -39,7 +39,7 @@ var (
 	ErrConnectionStorage      = errors.New("konfigurasi koneksi tidak dapat dibaca")
 )
 
-// Connection is safe to pass to templates: it never contains a stored password.
+// Connection is safe to return from the API: it never contains a stored password.
 type Connection struct {
 	ID           int64  `json:"id,string"`
 	Name         string `json:"name"`

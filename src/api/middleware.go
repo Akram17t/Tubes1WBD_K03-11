@@ -13,7 +13,7 @@ import (
 )
 
 // tangkap panic biar server ga mati. Request /api dapet JSON 500,
-// halaman lama (non-API) tetap dapet 500 polos kayak di M1
+// selain /api (asset SPA) dapet 500 polos
 func Recovery() gin.HandlerFunc {
 	return gin.CustomRecoveryWithWriter(io.Discard, func(c *gin.Context, recovered any) {
 		// isi panic sengaja ga di-log, bisa aja berisi data sensitif
@@ -47,24 +47,6 @@ func NoRoute(spaDir string) gin.HandlerFunc {
 			return
 		}
 		serveSPA(c, files)
-	}
-}
-
-// SPA mendahulukan hasil build untuk halaman frontend agar route HTML lama tidak menimpanya.
-// Tanpa build, handler lama tetap berjalan; /api, /static, dan mutasi tidak dialihkan ke SPA.
-func SPA(spaDir string) gin.HandlerFunc {
-	_, err := os.Stat(spaDir + "/index.html")
-	ready := spaDir != "" && err == nil
-	serve := NoRoute(spaDir)
-	return func(c *gin.Context) {
-		requestPath, method := c.Request.URL.Path, c.Request.Method
-		if !ready || IsAPIPath(requestPath) || requestPath == "/static" || strings.HasPrefix(requestPath, "/static/") ||
-			(method != http.MethodGet && method != http.MethodHead) {
-			c.Next()
-			return
-		}
-		serve(c)
-		c.Abort()
 	}
 }
 

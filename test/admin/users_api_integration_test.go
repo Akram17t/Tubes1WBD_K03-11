@@ -10,8 +10,6 @@ import (
 	"testing"
 
 	"tubes-wbd/src/auth"
-
-	"github.com/gin-gonic/gin"
 )
 
 // sesi login API: cookie session + token CSRF buat header
@@ -170,7 +168,7 @@ func TestUserAPIPatch(t *testing.T) {
 		t.Errorf("ganti nama tampilan aja: status %d data %v", w.Code, data)
 	}
 
-	login(r, "budi")
+	apiLogin(t, r, "budi")
 	callAPI(r, http.MethodPatch, path, `{"is_platform_admin":true}`, admin)
 	var version int
 	db.QueryRow(`SELECT privilege_version FROM users WHERE id = $1`, budiID).Scan(&version)
@@ -189,7 +187,7 @@ func TestUserAPIPatch(t *testing.T) {
 			t.Errorf("%s: status %d, session harus dicabut", step.name, w.Code)
 		}
 	}
-	if login(r, "budi") != nil {
+	if w, _ := callAPI(r, http.MethodPost, auth.LoginPath, `{"username":"budi","password":"rahasia123"}`, apiSession{}); w.Code != http.StatusUnauthorized {
 		t.Error("akun nonaktif ga boleh bisa login")
 	}
 	if w, body := callAPI(r, http.MethodPatch, path, `{"is_active":true}`, admin); w.Code != http.StatusOK || dataOf(body)["is_active"] != true {
@@ -227,7 +225,7 @@ func freshSession(t *testing.T, r http.Handler, db *sql.DB, userID int64) {
 		t.Fatal(err)
 	}
 	mustExec(t, db, `UPDATE users SET password_hash = $2, is_active = true WHERE id = $1`, userID, hash)
-	if login(r.(*gin.Engine), "budi") == nil || activeSessions(t, db, userID) == 0 {
+	if apiLogin(t, r, "budi"); activeSessions(t, db, userID) == 0 {
 		t.Fatal("gagal bikin session aktif buat budi")
 	}
 }

@@ -2,31 +2,27 @@ package admin_test
 
 import (
 	"net/http"
-	"net/url"
 	"testing"
 )
 
-// form group harus bawa token CSRF dari auth, kalau ga semua POST group bakal 403
-func TestGroupFormUsesSharedCSRFToken(t *testing.T) {
+// API group pakai token CSRF dari auth: tanpa token ditolak, token dari login diterima
+func TestGroupAPIUsesSharedCSRFToken(t *testing.T) {
 	db := openTestDB(t)
 	r := newAdminRouter(db)
 	insertUser(t, db, "admin", true)
-	admin := login(r, "admin")
+	admin := apiLogin(t, r, "admin")
 
-	page := send(r, http.MethodGet, "/admin/groups/new", nil, admin)
-	match := csrfPattern.FindStringSubmatch(page.Body.String())
-	if match == nil {
-		t.Fatalf("halaman group baru ga punya token CSRF (status %d)", page.Code)
+	noToken := apiSession{cookie: admin.cookie}
+	if w, body := callAPI(r, http.MethodPost, "/api/admin/groups", `{"name":"analyst"}`, noToken); w.Code != http.StatusForbidden || codeOf(body) != "csrf_invalid" {
+		t.Errorf("tanpa token CSRF: dapat %d %s, harusnya 403 csrf_invalid", w.Code, codeOf(body))
 	}
-
-	form := url.Values{"name": {"analyst"}, "csrf_token": {match[1]}}
-	if w := send(r, http.MethodPost, "/admin/groups", form, admin); w.Code != http.StatusSeeOther {
-		t.Errorf("bikin group pakai token dari halaman: dapat %d, harusnya 303", w.Code)
+	if w, _ := callAPI(r, http.MethodPost, "/api/admin/groups", `{"name":"analyst"}`, admin); w.Code != http.StatusCreated {
+		t.Errorf("bikin group pakai token dari login: dapat %d, harusnya 201", w.Code)
 	}
 
 	var count int
 	db.QueryRow(`SELECT count(*) FROM groups WHERE name = 'analyst'`).Scan(&count)
 	if count != 1 {
-		t.Error("group harusnya tersimpan")
+		t.Error("group harusnya tersimpan sekali")
 	}
 }

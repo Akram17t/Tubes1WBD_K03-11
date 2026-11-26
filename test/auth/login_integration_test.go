@@ -23,31 +23,29 @@ var testSessionConfig = SessionConfig{
 	GracePeriod:      30 * time.Second,
 }
 
-// bikin router lengkap: middleware session, route auth, dan satu halaman terlindungi
+// route terlindungi buat ngetes session; prefix /api biar balasan gagalnya JSON 401
+const protectedPath = "/api/protected"
+
+// bikin router lengkap: middleware session, route auth, dan satu route terlindungi
 func newAuthRouter(db *sql.DB) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.LoadHTMLFiles("../../templates/login.html")
-
 	RegisterRoutes(r, db, testSessionConfig)
-	r.GET("/databases", RequireLogin(), func(c *gin.Context) {
-		c.String(http.StatusOK, "daftar database")
-	})
-	// pura-pura halaman yang punya form, isinya cuma token CSRF
-	r.GET("/form", RequireLogin(), func(c *gin.Context) {
-		c.String(http.StatusOK, CSRFToken(c))
+	r.GET(protectedPath, RequireLogin(), func(c *gin.Context) {
+		c.String(http.StatusOK, "terlindungi")
 	})
 	return r
 }
 
-// ambil token CSRF dari "halaman form" pakai cookie session yang dikasih
+// ambil token CSRF dari /api/auth/me pakai cookie session yang dikasih, sama kayak SPA
 func csrfTokenFor(t *testing.T, r *gin.Engine, sessionCookie *http.Cookie) string {
 	t.Helper()
-	w := send(r, http.MethodGet, "/form", nil, sessionCookie)
-	if w.Code != http.StatusOK || w.Body.Len() == 0 {
+	w := sendJSON(r, http.MethodGet, "/api/auth/me", "", apiOpts{cookie: sessionCookie})
+	token, _ := decodeBody(t, w)["data"].(map[string]any)["csrf_token"].(string)
+	if w.Code != http.StatusOK || token == "" {
 		t.Fatalf("gagal ambil token CSRF: status %d", w.Code)
 	}
-	return w.Body.String()
+	return token
 }
 
 // bikin user dengan password asli (di-hash), balikin id-nya
@@ -98,14 +96,10 @@ func sessionCookieFrom(w *httptest.ResponseRecorder) *http.Cookie {
 	return nil
 }
 
-// login lewat form dan balikin cookie session-nya
+// login lewat API dan balikin cookie session-nya
 func loginAs(t *testing.T, r *gin.Engine, username, password string) *http.Cookie {
 	t.Helper()
-	w := send(r, http.MethodPost, "/login", url.Values{"username": {username}, "password": {password}}, nil)
-	cookie := sessionCookieFrom(w)
-	if w.Code != http.StatusSeeOther || cookie == nil {
-		t.Fatalf("login %s gagal: status %d", username, w.Code)
-	}
+	cookie, _ := apiLoginAs(t, r, username, password)
 	return cookie
 }
 
@@ -116,9 +110,9 @@ func TestLoginAndLogout(t *testing.T) {
 	insertUserWithPassword(t, db, "editor", "rahasia123")
 
 	// username ditulis beda huruf dan ada spasi, tetap harus bisa login
-	w := send(r, http.MethodPost, "/login", url.Values{"username": {"  Editor "}, "password": {"rahasia123"}}, nil)
-	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/databases" {
-		t.Fatalf("login benar: dapat %d ke %q", w.Code, w.Header().Get("Location"))
+	w := sendJSON(r, http.MethodPost, LoginPath, `{"username":"  Editor ","password":"rahasia123"}`, apiOpts{})
+	if w.Code != http.StatusOK {
+		t.Fatalf("login benar: dapat %d", w.Code)
 	}
 	cookie := sessionCookieFrom(w)
 	if cookie == nil || !cookie.HttpOnly || cookie.SameSite != http.SameSiteLaxMode {
@@ -132,14 +126,13 @@ func TestLoginAndLogout(t *testing.T) {
 		t.Error("database harus nyimpen hash token, bukan token aslinya")
 	}
 
-	if w := send(r, http.MethodGet, "/databases", nil, cookie); w.Code != http.StatusOK {
-		t.Errorf("halaman terlindungi dengan cookie: dapat %d, harusnya 200", w.Code)
+	if w := send(r, http.MethodGet, protectedPath, nil, cookie); w.Code != http.StatusOK {
+		t.Errorf("route terlindungi dengan cookie: dapat %d, harusnya 200", w.Code)
 	}
 
 	token := csrfTokenFor(t, r, cookie)
-	w = send(r, http.MethodPost, "/logout", url.Values{"csrf_token": {token}}, cookie)
-	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/login" {
-		t.Errorf("logout: dapat %d ke %q", w.Code, w.Header().Get("Location"))
+	if w := sendJSON(r, http.MethodPost, "/api/auth/logout", "", apiOpts{cookie: cookie, csrf: token}); w.Code != http.StatusOK {
+		t.Errorf("logout: dapat %d, harusnya 200", w.Code)
 	}
 
 	var revoked bool
@@ -149,59 +142,8 @@ func TestLoginAndLogout(t *testing.T) {
 	}
 
 	// cookie lama dipakai lagi setelah logout harus ditolak
-	if w := send(r, http.MethodGet, "/databases", nil, cookie); w.Code != http.StatusSeeOther {
-		t.Errorf("cookie setelah logout: dapat %d, harusnya 303 ke /login", w.Code)
-	}
-}
-
-// password salah, username ga ada, dan akun nonaktif semua dapat pesan yang sama
-func TestLoginFailuresUseGenericMessage(t *testing.T) {
-	db := openTestDB(t)
-	r := newAuthRouter(db)
-	insertUserWithPassword(t, db, "editor", "rahasia123")
-	nonaktif := insertUserWithPassword(t, db, "pensiun", "rahasia123")
-	mustExec(t, db, `UPDATE users SET is_active = false WHERE id = $1`, nonaktif)
-
-	attempts := []url.Values{
-		{"username": {"editor"}, "password": {"tebakan-asal-99"}},
-		{"username": {"ga-ada"}, "password": {"rahasia123"}},
-		{"username": {"pensiun"}, "password": {"rahasia123"}},
-	}
-	for _, form := range attempts {
-		w := send(r, http.MethodPost, "/login", form, nil)
-		if w.Code != http.StatusUnauthorized {
-			t.Errorf("%s: dapat %d, harusnya 401", form.Get("username"), w.Code)
-		}
-		if !strings.Contains(w.Body.String(), "username atau password salah") {
-			t.Errorf("%s: pesan error generik ga muncul", form.Get("username"))
-		}
-		if strings.Contains(w.Body.String(), form.Get("password")) {
-			t.Errorf("%s: password ga boleh muncul di response", form.Get("username"))
-		}
-		if sessionCookieFrom(w) != nil {
-			t.Errorf("%s: login gagal ga boleh ngasih cookie", form.Get("username"))
-		}
-	}
-}
-
-// login lagi dari browser yang sama harus dapat token baru dan nyabut session lama
-func TestLoginAgainRevokesOldSession(t *testing.T) {
-	db := openTestDB(t)
-	r := newAuthRouter(db)
-	insertUserWithPassword(t, db, "editor", "rahasia123")
-
-	oldCookie := loginAs(t, r, "editor", "rahasia123")
-	w := send(r, http.MethodPost, "/login", url.Values{"username": {"editor"}, "password": {"rahasia123"}}, oldCookie)
-	newCookie := sessionCookieFrom(w)
-	if newCookie == nil || newCookie.Value == oldCookie.Value {
-		t.Fatal("login ulang harus ngasih token baru")
-	}
-
-	if w := send(r, http.MethodGet, "/databases", nil, oldCookie); w.Code != http.StatusSeeOther {
-		t.Errorf("token lama: dapat %d, harusnya ditolak", w.Code)
-	}
-	if w := send(r, http.MethodGet, "/databases", nil, newCookie); w.Code != http.StatusOK {
-		t.Errorf("token baru: dapat %d, harusnya 200", w.Code)
+	if w := send(r, http.MethodGet, protectedPath, nil, cookie); w.Code != http.StatusUnauthorized {
+		t.Errorf("cookie setelah logout: dapat %d, harusnya 401", w.Code)
 	}
 }
 
@@ -226,9 +168,8 @@ func TestSessionExpiry(t *testing.T) {
 		cookie := loginAs(t, r, "editor", "rahasia123")
 
 		mustExec(t, db, tc.setup)
-		w := send(r, http.MethodGet, "/databases", nil, cookie)
-		if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/login" {
-			t.Errorf("%s: dapat %d, harusnya 303 ke /login", tc.name, w.Code)
+		if w := send(r, http.MethodGet, protectedPath, nil, cookie); w.Code != http.StatusUnauthorized {
+			t.Errorf("%s: dapat %d, harusnya 401", tc.name, w.Code)
 		}
 	}
 }

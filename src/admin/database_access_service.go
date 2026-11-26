@@ -19,12 +19,6 @@ var (
 	errDatabaseAccessNotFound = errors.New("Pemberian akses tidak ditemukan.")
 )
 
-type databaseAccessPage struct {
-	Group     Group
-	Grants    []DatabaseGrant
-	Databases []AccessDatabase
-}
-
 type databaseAccessService struct{ db *sql.DB }
 
 // group memeriksa hak admin dan memastikan group masih dapat dikelola.
@@ -49,38 +43,6 @@ func (s databaseAccessService) get(ctx context.Context, user *auth.User, groupID
 		return DatabaseGrant{}, errInvalidDatabaseID
 	}
 	return (databaseAccessRepository{db: s.db}).grant(ctx, groupID, databaseID)
-}
-
-// page menyiapkan grant dan pilihan koneksi yang belum diberikan untuk halaman M1.
-func (s databaseAccessService) page(ctx context.Context, user *auth.User, groupID int64) (databaseAccessPage, error) {
-	var page databaseAccessPage
-	if err := auth.Authorize(ctx, s.db, user, auth.ManagePlatform, 0); err != nil {
-		return page, err
-	}
-	if groupID <= 0 {
-		return page, errInvalidGroupID
-	}
-	var err error
-	if page.Group, err = (groupRepository{db: s.db}).find(ctx, groupID); err != nil {
-		return page, err
-	}
-	repository := databaseAccessRepository{db: s.db}
-	if page.Grants, err = repository.grants(ctx, groupID); err != nil {
-		return page, err
-	}
-	page.Databases, err = repository.databases(ctx)
-	assigned := make(map[int64]bool, len(page.Grants))
-	for _, grant := range page.Grants {
-		assigned[grant.DatabaseID] = true
-	}
-	available := page.Databases[:0]
-	for _, database := range page.Databases {
-		if !assigned[database.ID] {
-			available = append(available, database)
-		}
-	}
-	page.Databases = available
-	return page, err
 }
 
 // save mengubah grant dan dampak session secara atomic lalu mengembalikan grant tersimpan.

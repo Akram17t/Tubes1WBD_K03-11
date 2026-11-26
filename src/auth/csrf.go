@@ -16,10 +16,7 @@ import (
 
 // Token CSRF = nonce acak + tanda tangan HMAC(csrf_secret session, nonce).
 // Nonce-nya baru tiap render, jadi token kelihatan beda terus, tapi semuanya tetap valid selama session-nya sama.
-const (
-	csrfFieldName = "csrf_token"
-	csrfNonceSize = 16
-)
+const csrfNonceSize = 16
 
 // bikin tanda tangan HMAC-SHA256 dari nonce pakai secret session
 func signNonce(secret, nonce []byte) []byte {
@@ -58,15 +55,6 @@ func validCSRFToken(secret []byte, token string) bool {
 	return hmac.Equal(signature, signNonce(secret, nonce))
 }
 
-// ambil token CSRF buat template, kosong kalau belum login, taruh di form.
-func CSRFToken(c *gin.Context) string {
-	session, ok := currentSession(c)
-	if !ok {
-		return ""
-	}
-	return makeCSRFToken(session.CSRFSecret)
-}
-
 // cek request datang dari halaman kita sendiri lewat header Origin, kalau Origin ga ada pakai Referer
 func sameOrigin(r *http.Request) bool {
 	source := r.Header.Get("Origin")
@@ -88,7 +76,7 @@ func sameOrigin(r *http.Request) bool {
 const CSRFHeader = "X-CSRF-Token"
 
 // middleware yang nolak POST/PATCH/DELETE tanpa token CSRF valid, pasang setelah Session.
-// Login (HTML maupun API) dicek lewat Origin karena belum punya session
+// Login dicek lewat Origin karena belum punya session
 func CSRF() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		method := c.Request.Method
@@ -98,7 +86,7 @@ func CSRF() gin.HandlerFunc {
 		}
 
 		path := c.Request.URL.Path
-		if path == "/login" || path == LoginPath {
+		if path == LoginPath {
 			if !sameOrigin(c.Request) {
 				rejectCSRF(c, "origin_mismatch")
 				return
@@ -113,14 +101,7 @@ func CSRF() gin.HandlerFunc {
 			return
 		}
 
-		// SPA kirim token lewat header, halaman lama lewat hidden field form
-		var token string
-		if api.IsAPIPath(path) {
-			token = c.GetHeader(CSRFHeader)
-		} else {
-			token = c.PostForm(csrfFieldName)
-		}
-		if !validCSRFToken(session.CSRFSecret, token) {
+		if !validCSRFToken(session.CSRFSecret, c.GetHeader(CSRFHeader)) {
 			rejectCSRF(c, "invalid_token")
 			return
 		}
@@ -131,9 +112,5 @@ func CSRF() gin.HandlerFunc {
 // tolak request CSRF: catat ke log (tanpa isi token), /api dapet JSON 403 csrf_invalid
 func rejectCSRF(c *gin.Context, reason string) {
 	slog.WarnContext(c.Request.Context(), "auth.csrf_rejected", "reason", reason, "method", c.Request.Method, "path", c.FullPath())
-	if api.IsAPIPath(c.Request.URL.Path) {
-		api.Fail(c, http.StatusForbidden, api.CodeCSRFInvalid, "Token CSRF tidak valid. Muat ulang halaman lalu coba lagi.", nil)
-		return
-	}
-	c.AbortWithStatus(http.StatusForbidden)
+	api.Fail(c, http.StatusForbidden, api.CodeCSRFInvalid, "Token CSRF tidak valid. Muat ulang halaman lalu coba lagi.", nil)
 }

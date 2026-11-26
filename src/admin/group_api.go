@@ -77,7 +77,7 @@ func grantResponse(groupID int64, grant DatabaseGrant) groupGrantDTO {
 	return groupGrantDTO{groupID, grant.DatabaseID, grant.DatabaseName, grant.AccessLevel, grant.IsActive}
 }
 
-// groupAPIID membaca ID positif dari URL tanpa memakai format error HTML M1.
+// groupAPIID membaca ID positif dari URL dan menjawab ID rusak dengan error JSON.
 func groupAPIID(c *gin.Context, name string) (int64, bool) {
 	id, err := api.ParseID(c.Param(name))
 	if err != nil {

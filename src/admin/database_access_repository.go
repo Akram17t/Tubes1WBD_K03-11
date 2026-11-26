@@ -13,21 +13,11 @@ type DatabaseGrant struct {
 	IsActive     bool
 }
 
-type AccessDatabase struct {
-	ID   int64
-	Name string
-}
-
 type databaseAccessRepository struct{ db groupDB }
 
 const grantQuery = `SELECT dc.id, dc.name, gda.access_level, dc.is_active
 	FROM group_database_access gda JOIN database_connections dc ON dc.id = gda.database_id
 	WHERE gda.group_id = $1`
-
-// grants mengambil semua grant group untuk halaman HTML M1.
-func (r databaseAccessRepository) grants(ctx context.Context, groupID int64) ([]DatabaseGrant, error) {
-	return r.queryGrants(ctx, grantQuery+` ORDER BY dc.name, dc.id`, groupID)
-}
 
 // grantsPage mengambil grant dengan pagination di database.
 func (r databaseAccessRepository) grantsPage(ctx context.Context, groupID int64, limit, offset int) ([]DatabaseGrant, error) {
@@ -65,24 +55,6 @@ func scanGrant(row interface{ Scan(...any) error }) (DatabaseGrant, error) {
 		err = errDatabaseAccessNotFound
 	}
 	return grant, err
-}
-
-// databases mengambil koneksi aktif yang dapat dipilih pada form grant M1.
-func (r databaseAccessRepository) databases(ctx context.Context) ([]AccessDatabase, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, name FROM database_connections WHERE is_active ORDER BY name, id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	databases := make([]AccessDatabase, 0)
-	for rows.Next() {
-		var database AccessDatabase
-		if err := rows.Scan(&database.ID, &database.Name); err != nil {
-			return nil, err
-		}
-		databases = append(databases, database)
-	}
-	return databases, rows.Err()
 }
 
 // lockDatabase mencegah penghapusan atau deaktivasi koneksi mendahului validasi grant.

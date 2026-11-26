@@ -18,7 +18,6 @@ type groupStore interface {
 	find(context.Context, int64) (Group, error)
 	update(context.Context, int64, string, string) error
 	members(context.Context, int64) ([]GroupMember, error)
-	availableUsers(context.Context, int64) ([]GroupMember, error)
 }
 
 type groupService struct {
@@ -55,26 +54,6 @@ func (s groupService) create(ctx context.Context, user *auth.User, name, descrip
 		return Group{}, err
 	}
 	return s.store.create(ctx, name, description)
-}
-
-// edit menyiapkan group, anggota, dan pilihan user untuk halaman pengelolaan.
-func (s groupService) edit(ctx context.Context, user *auth.User, id int64) (groupEditData, error) {
-	var data groupEditData
-	if err := s.authorize(ctx, user); err != nil {
-		return data, err
-	}
-	if id <= 0 {
-		return data, errInvalidGroupID
-	}
-	var err error
-	if data.Group, err = s.store.find(ctx, id); err != nil {
-		return data, err
-	}
-	if data.Members, err = s.store.members(ctx, id); err != nil {
-		return data, err
-	}
-	data.AvailableUsers, err = s.store.availableUsers(ctx, id)
-	return data, err
 }
 
 // update memvalidasi perubahan label group tanpa mengubah izin anggotanya.

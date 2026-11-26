@@ -202,7 +202,7 @@ func TestAPICSRFHeader(t *testing.T) {
 	}
 }
 
-// API tanpa login dapat JSON 401, bukan redirect HTML; halaman lama tetap redirect
+// API tanpa login dapat JSON 401, bukan redirect HTML
 func TestAPIUnauthenticatedIsJSON(t *testing.T) {
 	db := openTestDB(t)
 	r := newAuthRouter(db)
@@ -213,9 +213,6 @@ func TestAPIUnauthenticatedIsJSON(t *testing.T) {
 	}
 	if w := sendJSON(r, http.MethodPost, "/api/auth/logout", "", apiOpts{}); w.Code != http.StatusUnauthorized {
 		t.Errorf("logout tanpa login: dapat %d, harusnya 401", w.Code)
-	}
-	if w := send(r, http.MethodGet, "/databases", nil, nil); w.Code != http.StatusSeeOther {
-		t.Errorf("halaman lama tanpa login harus tetap redirect, dapat %d", w.Code)
 	}
 }
 

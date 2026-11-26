@@ -2,10 +2,9 @@ package database_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -64,12 +63,8 @@ func TestConnectionServiceRejectsDuplicateTargetsAndPreservesPassword(t *testing
 	database.RegisterRoutes(r, f.Platform, service.Target)
 	database.RegisterAdminRoutes(r, service)
 	cookie := testdb.Login(t, r, "admin")
-	page := testdb.Request(r, "GET", "/databases", nil, cookie)
-	if page.Code != 200 || !strings.Contains(page.Body.String(), "/admin/databases") {
-		t.Fatal("navigasi pengelolaan koneksi tidak tersedia")
-	}
-	form := url.Values{"name": {input.Name}, "host": {input.Host}, "port": {strconv.Itoa(input.Port)}, "database_name": {input.DatabaseName}, "db_username": {input.DBUsername}, "ssl_mode": {input.SSLMode}, "password": {input.Password}, "csrf_token": {testdb.Token(t, page.Body.String())}}
-	w := testdb.Request(r, "POST", "/admin/databases", form, cookie)
+	body, _ := json.Marshal(map[string]any{"name": input.Name, "host": input.Host, "port": input.Port, "database_name": input.DatabaseName, "db_username": input.DBUsername, "ssl_mode": input.SSLMode, "password": input.Password})
+	w := apiRequest(r, "POST", "/api/admin/connections", string(body), testdb.CSRF(t, r, cookie), cookie)
 	if w.Code != 409 || !strings.Contains(w.Body.String(), database.ErrConnectionTargetExists.Error()) || strings.Contains(w.Body.String(), input.Password) {
 		t.Fatalf("respons target ganda tidak aman: %d %s", w.Code, w.Body.String())
 	}
@@ -96,7 +91,7 @@ func TestConnectionServiceRejectsPlatformAsTarget(t *testing.T) {
 	r := f.Router(t)
 	database.RegisterRoutes(r, f.Platform, service.Target)
 	editor := testdb.Login(t, r, "editor")
-	if w := testdb.Request(r, "GET", "/databases/1/schema", nil, editor); w.Code != 503 {
+	if w := testdb.Request(r, "GET", "/api/databases/1/schemas", nil, editor); w.Code != 503 {
 		t.Fatalf("viewer membuka database platform: %d", w.Code)
 	}
 }
