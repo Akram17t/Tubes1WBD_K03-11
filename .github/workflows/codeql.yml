@@ -1,0 +1,62 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Backend API dan worker
+          - language: go
+            build-mode: manual
+          # SPA React di frontend/
+          - language: javascript-typescript
+            build-mode: none
+    steps:
+      - uses: actions/checkout@v5
+
+      - if: matrix.language == 'go'
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - if: matrix.build-mode == 'manual'
+        run: go build ./...
+
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
+          output: sarif-results
+
+      # Salinan SARIF sebagai bukti hasil scan yang bisa diunduh dari halaman run.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: codeql-sarif-${{ matrix.language }}
+          path: sarif-results
+          retention-days: 30

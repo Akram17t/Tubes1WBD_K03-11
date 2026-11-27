@@ -1,0 +1,11 @@
+name: tubes-wbd CodeQL config
+
+# security-extended menambah query keamanan presisi menengah di atas suite default.
+queries:
+  - uses: security-extended
+
+# Hasil build dan dependency bukan kode tim.
+paths-ignore:
+  - frontend/dist
+  - frontend/node_modules
+  - docs
