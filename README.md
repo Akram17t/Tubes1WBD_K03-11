@@ -174,111 +174,165 @@ Satu browser hanya dapat login sebagai satu user dalam satu waktu, karena semua 
 
 Tampilan aplikasi berupa SPA React yang berkomunikasi dengan server Go lewat API JSON. Setiap halaman memakai layout responsif dan menampilkan keadaan loading, kosong, error, dan akses ditolak. Tombol yang mengubah data dinonaktifkan selama request berjalan supaya tidak terkirim dua kali.
 
-![Tampilan di layar HP](screenshots/mobile.png)
+Setiap screenshot di bawah ditampilkan berdampingan: tampilan desktop (1280 px) di kiri dan tampilan HP (390 × 844) di kanan.
 
 ### Login
 
-![Login](screenshots/login.png)
+<p>
+  <img src="screenshots/login.png" alt="Login (desktop)" width="72%">
+  <img src="screenshots/mobile/login.png" alt="Login (mobile)" width="24%">
+</p>
 
 Halaman login berisi input username dan password. Username tidak membedakan huruf besar dan kecil. Jika kredensial benar, session baru dibuat dan pengguna diarahkan ke daftar database. Password salah, username yang tidak terdaftar, dan akun yang dinonaktifkan semuanya menampilkan pesan error yang sama, sehingga halaman tidak membocorkan akun mana saja yang ada. Setiap login menerbitkan token session baru dan mencabut session sebelumnya di browser tersebut.
 
 ### Daftar Database
 
-![Daftar database](screenshots/databases.png)
+<p>
+  <img src="screenshots/databases.png" alt="Daftar database (desktop)" width="72%">
+  <img src="screenshots/mobile/databases.png" alt="Daftar database (mobile)" width="24%">
+</p>
 
 Halaman ini hanya menampilkan database aktif yang dapat diakses pengguna melalui group-nya, beserta tingkat aksesnya. Database tanpa pemberian akses tidak muncul, dan membukanya langsung lewat URL menghasilkan pesan akses ditolak.
 
 ### Struktur Database
 
-![Struktur database](screenshots/schema.png)
+<p>
+  <img src="screenshots/schema.png" alt="Struktur database (desktop)" width="72%">
+  <img src="screenshots/mobile/schema.png" alt="Struktur database (mobile)" width="24%">
+</p>
 
 Setiap database punya empat tab: Struktur, Migration, Request, dan History. Tab Struktur menampilkan daftar schema dan tabel pada database target. Jika database sedang ditahan karena migration yang berhenti di tengah, alasannya ditampilkan di atas tab.
 
 ### Struktur Tabel
 
-![Struktur tabel](screenshots/table.png)
+<p>
+  <img src="screenshots/table.png" alt="Struktur tabel (desktop)" width="72%">
+  <img src="screenshots/mobile/table.png" alt="Struktur tabel (mobile)" width="24%">
+</p>
 
 Untuk setiap tabel ditampilkan kolom beserta tipe PostgreSQL dan status nullable, constraint (primary key, foreign key, unique, check), serta index. Nama schema dan tabel divalidasi terhadap database target sebelum query dibuat.
 
 ### Data Tabel
 
-![Data tabel](screenshots/data.png)
+<p>
+  <img src="screenshots/data.png" alt="Data tabel (desktop)" width="72%">
+  <img src="screenshots/mobile/data.png" alt="Data tabel (mobile)" width="24%">
+</p>
 
 Isi tabel ditampilkan dengan pagination. Ukuran halaman dibatasi di server, sehingga sebuah request tidak bisa memuat seluruh isi tabel besar sekaligus.
 
 ### Daftar Migration
 
-![Daftar migration](screenshots/migrations.png)
+<p>
+  <img src="screenshots/migrations.png" alt="Daftar migration (desktop)" width="72%">
+  <img src="screenshots/mobile/migrations.png" alt="Daftar migration (mobile)" width="24%">
+</p>
 
 Migration adalah definisi berisi SQL up dan SQL down. Daftar ini menampilkan mode (normal atau batch), penanda irreversible dan terkunci, serta posisi migration: belum pernah diterapkan, aktif, sudah di-rollback, atau tergantikan. Posisi dihitung dari riwayat eksekusi yang sukses. Tombol buat migration hanya muncul untuk pengguna dengan akses Edit, dan backend tetap memeriksa izin pada setiap request.
 
 ### Buat dan Edit Migration
 
-![Buat migration](screenshots/migration-new.png)
+<p>
+  <img src="screenshots/migration-new.png" alt="Buat migration (desktop)" width="72%">
+  <img src="screenshots/mobile/migration-new.png" alt="Buat migration (mobile)" width="24%">
+</p>
 
 Pengguna dengan akses Edit menulis judul, deskripsi (opsional), SQL up, dan SQL down. SQL divalidasi dengan parser PostgreSQL sebelum disimpan. Mode batch memecah perubahan per kelompok ID agar lock tabel singkat; SQL-nya harus berbentuk `UPDATE schema.tabel ... WHERE kolom_key = ANY($1::bigint[])`. Migration yang ditandai irreversible wajib menyertakan alasan dan tidak dapat di-rollback. Definisi dapat diubah selama belum dipakai request; setelah itu definisi dikunci dan perbaikan dibuat sebagai migration baru. Jika definisi sudah diubah orang lain, penyimpanan ditolak supaya perubahan tidak saling menimpa.
 
 ### Detail Migration
 
-![Detail migration](screenshots/migration-detail.png)
+<p>
+  <img src="screenshots/migration-detail.png" alt="Detail migration (desktop)" width="72%">
+  <img src="screenshots/mobile/migration-detail.png" alt="Detail migration (mobile)" width="24%">
+</p>
 
 Halaman detail menampilkan definisi dan tombol aksi yang berlaku untuk posisi migration saat ini: ajukan up untuk migration yang belum diterapkan, ajukan rollback untuk migration aktif teratas, atau ajukan forward untuk menerapkan ulang migration yang baru di-rollback. Rollback dan forward mengikuti urutan linear, jadi hanya migration teratas yang dapat dibatalkan.
 
 ### Daftar Request
 
-![Daftar request](screenshots/requests.png)
+<p>
+  <img src="screenshots/requests.png" alt="Daftar request (desktop)" width="72%">
+  <img src="screenshots/mobile/requests.png" alt="Daftar request (mobile)" width="24%">
+</p>
 
 Menjalankan migration selalu melalui request. Request menyimpan snapshot definisi saat diajukan, sehingga yang di-review leader sama persis dengan yang dijalankan.
 
 ### Review dan Approval
 
-![Detail request](screenshots/request-detail.png)
+<p>
+  <img src="screenshots/request-detail.png" alt="Detail request (desktop)" width="72%">
+  <img src="screenshots/mobile/request-detail.png" alt="Detail request (mobile)" width="24%">
+</p>
 
 Setelah request di-submit, leader setiap group yang punya akses ke database tersebut memberikan approval atas nama group-nya. Halaman ini menampilkan snapshot SQL yang akan dijalankan dan status approval per group. Request baru dapat dieksekusi setelah semua group menyetujui, dan pengaju menekan tombol eksekusi secara terpisah.
 
 ### Job dan Progress
 
-![Job sukses](screenshots/job.png)
+<p>
+  <img src="screenshots/job.png" alt="Job sukses (desktop)" width="72%">
+  <img src="screenshots/mobile/job.png" alt="Job sukses (mobile)" width="24%">
+</p>
 
 Eksekusi berjalan di proses worker terpisah sebagai job. Halaman job memperbarui statusnya otomatis setiap dua detik selama job masih antre atau berjalan, dan berhenti memperbarui saat tab tidak terlihat. Progress dihitung dari row dan batch yang benar-benar sudah di-commit, bukan dari timer.
 
-![Job gagal](screenshots/job-failed.png)
+<p>
+  <img src="screenshots/job-failed.png" alt="Job gagal (desktop)" width="72%">
+  <img src="screenshots/mobile/job-failed.png" alt="Job gagal (mobile)" width="24%">
+</p>
 
 Jika SQL gagal, pesan error dan SQLSTATE ditampilkan tanpa membocorkan kredensial koneksi. Migration batch yang berhenti setelah sebagian batch di-commit berstatus "berhenti di tengah" dan menahan migration lain pada database tersebut sampai job dilanjutkan (resume) atau dikompensasi. Kompensasi menjalankan SQL down hanya untuk batch yang sudah di-commit, dan seperti request lain harus di-review terlebih dahulu. Status yang belum pasti tidak pernah ditampilkan sebagai gagal, dan aplikasi tidak pernah menyarankan menjalankan SQL secara manual.
 
 ### History
 
-![History](screenshots/history.png)
+<p>
+  <img src="screenshots/history.png" alt="History (desktop)" width="72%">
+  <img src="screenshots/mobile/history.png" alt="History (mobile)" width="24%">
+</p>
 
 History mencatat setiap percobaan eksekusi, termasuk yang gagal dan retry, beserta pelaksana dan waktunya. Opsi Hide rollback menyembunyikan pasangan eksekusi sukses yang sudah di-rollback beserta rollback-nya; kegagalan tetap ditampilkan.
 
 ### Detail Eksekusi
 
-![Detail eksekusi](screenshots/execution.png)
+<p>
+  <img src="screenshots/execution.png" alt="Detail eksekusi (desktop)" width="72%">
+  <img src="screenshots/mobile/execution.png" alt="Detail eksekusi (mobile)" width="24%">
+</p>
 
 Detail eksekusi menampilkan SQL yang benar-benar dijalankan, error jika ada, relasi ke eksekusi yang dibatalkan, dan untuk mode batch, catatan setiap batch berupa cakupan ID, jumlah row, status, dan SQL-nya.
 
 ### Administrasi User
 
-![Administrasi user](screenshots/users.png)
+<p>
+  <img src="screenshots/users.png" alt="Administrasi user (desktop)" width="72%">
+  <img src="screenshots/mobile/users.png" alt="Administrasi user (mobile)" width="24%">
+</p>
 
 Platform Admin dapat melihat seluruh akun beserta peran dan statusnya, membuat user baru, serta mengaktifkan atau menonaktifkan akun. Menonaktifkan akun langsung mencabut seluruh session milik akun tersebut dan melepas jabatan leader group yang dipegangnya.
 
 ### Buat dan Edit User
 
-![Edit user](screenshots/user-form.png)
+<p>
+  <img src="screenshots/user-form.png" alt="Edit user (desktop)" width="72%">
+  <img src="screenshots/mobile/user-form.png" alt="Edit user (mobile)" width="24%">
+</p>
 
 Admin dapat mengatur username, nama tampilan, password, dan status Platform Admin. Password disimpan sebagai hash Argon2id dan harus terdiri dari 8 sampai 72 karakter. Username yang sudah dipakai ditolak. Mengganti password atau mencabut status admin akan mencabut session user tersebut, sedangkan menjadikan user sebagai admin akan merotasi session-nya pada request berikutnya. Admin tidak dapat menonaktifkan akunnya sendiri atau mencabut status adminnya sendiri.
 
 ### Daftar Group
 
-![Daftar group](screenshots/groups.png)
+<p>
+  <img src="screenshots/groups.png" alt="Daftar group (desktop)" width="72%">
+  <img src="screenshots/mobile/groups.png" alt="Daftar group (mobile)" width="24%">
+</p>
 
 Daftar group berisi tautan ke halaman detail setiap group.
 
 ### Detail Group, Anggota, dan Akses Database
 
-![Detail group](screenshots/group-detail.png)
+<p>
+  <img src="screenshots/group-detail.png" alt="Detail group (desktop)" width="72%">
+  <img src="screenshots/mobile/group-detail.png" alt="Detail group (mobile)" width="24%">
+</p>
 
 Di halaman ini admin mengganti nama dan deskripsi group, menambah atau mengeluarkan anggota, memilih leader, dan mengarsipkan group. Leader harus anggota aktif group tersebut, dan dialah yang memberi approval migration atas nama group. Menambah anggota menaikkan privilege version anggota tersebut sehingga session-nya dirotasi, sedangkan mengeluarkan anggota atau mengarsipkan group langsung mencabut session pengguna yang terdampak.
 
@@ -286,13 +340,19 @@ Bagian akses database memberikan akses View atau Edit ke database aktif, menguba
 
 ### Daftar Koneksi Database
 
-![Daftar koneksi database](screenshots/connections.png)
+<p>
+  <img src="screenshots/connections.png" alt="Daftar koneksi database (desktop)" width="72%">
+  <img src="screenshots/mobile/connections.png" alt="Daftar koneksi database (mobile)" width="24%">
+</p>
 
 Admin mengelola koneksi PostgreSQL yang dapat dibuka oleh platform. Menonaktifkan koneksi memblokir seluruh akses ke koneksi tersebut dan mencabut session pengguna yang memiliki akses melaluinya.
 
 ### Buat dan Edit Koneksi
 
-![Edit koneksi](screenshots/connection-form.png)
+<p>
+  <img src="screenshots/connection-form.png" alt="Edit koneksi (desktop)" width="72%">
+  <img src="screenshots/mobile/connection-form.png" alt="Edit koneksi (mobile)" width="24%">
+</p>
 
 Sebuah koneksi menyimpan host, port, nama database, username, password, dan SSL mode. Password dienkripsi dengan AES-256-GCM sebelum disimpan dan tidak pernah ditampilkan lagi; mengosongkannya saat edit berarti password lama tetap dipakai. Admin dapat menguji koneksi yang tersimpan, dan pengujian yang gagal tidak pernah membocorkan kredensial. Target yang sama tidak dapat didaftarkan dua kali, dan database milik platform sendiri tidak dapat dijadikan target.
 
