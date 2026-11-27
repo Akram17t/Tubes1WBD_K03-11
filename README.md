@@ -307,6 +307,31 @@ Sebuah koneksi menyimpan host, port, nama database, username, password, dan SSL 
 
 Session disimpan di server, sedangkan browser hanya menyimpan token acak di cookie yang bersifat HttpOnly dan SameSite=Lax (serta Secure di production). Database hanya menyimpan hash SHA-256 dari setiap token. Token dirotasi saat login, setiap interval rotasi, dan setiap kali hak akses pengguna meningkat. Token lama tetap berlaku selama grace period untuk menangani request yang berjalan bersamaan, dan rotasi tidak pernah memperpanjang absolute timeout. Aplikasi menolak berjalan jika interval rotasi tidak lebih pendek dari idle timeout, atau grace period tidak lebih pendek dari interval rotasi. Setiap request API yang mengubah data membawa token CSRF di header `X-CSRF-Token`, dan login dilindungi dengan pemeriksaan header Origin.
 
+### Pemulihan Job dan Lock
+
+Selama job berjalan, worker memegang advisory lock dengan key `database_id` pada dua koneksi khusus, satu di database platform dan satu di database target, serta memperbarui `heartbeat_at` setiap `WORKER_HEARTBEAT_INTERVAL`. Setiap update state job memakai `worker_token` sebagai fencing, sehingga worker lama yang sudah diambil alih tidak dapat lagi menulis hasil.
+
+Jika worker mati atau koneksinya putus, pemulihan berjalan otomatis oleh worker yang masih hidup:
+
+1. Job `running` dengan heartbeat lebih tua dari `JOB_STALE_AFTER`, atau job `outcome_unknown` yang sudah jatuh tempo, hanya menjadi **kandidat** pemulihan.
+2. Worker mencoba mengambil advisory lock platform untuk database tersebut. Lock **tidak pernah direbut berdasarkan waktu**. Selama session proses lama masih hidup, lock tetap dipegangnya dan job dibiarkan. PostgreSQL melepas advisory lock otomatis saat session pemiliknya berakhir.
+3. Setelah lock didapat, job diambil alih dengan `worker_token` baru. Jika belum ada execution `running`, SQL belum pernah dikirim, jadi job dikembalikan ke antrean tanpa efek apa pun.
+4. Jika execution `running` ada, worker mengambil lock target lalu membaca ledger target (`_dbplatform_migrations` dan `_dbplatform_batch_ledger`). Marker ditemukan berarti transaction sudah commit, sehingga execution dicatat sukses tanpa menjalankan SQL lagi. Untuk batch, progress diambil dari batch yang tercatat di ledger, lalu job dilanjutkan dari batch berikutnya. Tanpa marker, attempt dicatat terputus dan job di-retry sesuai batas attempt.
+5. Jika target belum dapat dihubungi atau lock target masih dipegang proses lain, status tetap `outcome_unknown` dan database tertahan sampai bukti dapat dibaca. Status ini tidak pernah ditampilkan sebagai gagal.
+
+Jika job tertahan lama, periksa apakah lock masih dipegang session lain:
+
+```sql
+-- Jalankan di database platform dan di database target; ganti 1 dengan database_id.
+SELECT l.pid, l.granted, a.application_name, a.state, a.backend_start, a.query
+FROM pg_locks l JOIN pg_stat_activity a USING (pid)
+WHERE l.locktype = 'advisory' AND l.classid = 0 AND l.objid = 1 AND l.objsubid = 1;
+```
+
+Jika pemegang lock adalah worker yang sudah tidak merespons (misalnya proses digantung, bukan sedang menjalankan SQL panjang), hentikan proses worker tersebut. Jika session-nya tetap tersisa, akhiri dengan `SELECT pg_terminate_backend(<pid>)`. Transaction yang belum commit akan di-rollback oleh PostgreSQL, lalu worker lain memulihkan job secara otomatis melalui ledger. Jangan pernah menghapus baris ledger `_dbplatform_*` atau mengubah status job secara manual, karena keduanya menjadi satu-satunya bukti apakah SQL sudah commit.
+
+Jika perubahan perlu dibatalkan tetapi SQL down tidak aman (migration irreversible, atau down akan menghapus data), lakukan perbaikan terkontrol lewat migration baru: buat definisi baru berisi SQL perbaikan yang sudah ditinjau, ajukan, minta approval semua leader, lalu eksekusi seperti biasa. Dengan cara ini perbaikan tetap tercatat di history dan ledger, tanpa SQL yang dijalankan langsung di luar platform.
+
 ### Logging dan Tracing
 
 Kedua proses menulis application log berformat JSON ke stdout dan span OpenTelemetry ke stderr. Setiap request API mendapat `request_id`, dan seluruh query SQL (platform maupun target, termasuk query read-only) dicatat dengan parameter yang disamarkan. Saat request di-execute, trace context W3C disimpan bersama job, lalu worker melanjutkannya, sehingga satu `trace_id` menghubungkan request HTTP sampai commit setiap batch di worker. Password, cookie, token session, token CSRF, dan DSN tidak pernah ditulis ke log.
@@ -480,6 +505,37 @@ K6 berakhir dengan exit code 0; seluruh threshold lolos dan 14.445 check berhasi
 Pada normal, queue p95 sekitar 130 ms. Di elevated, laju penyelesaian naik ke 6,35 job/s tetapi antrean bertambah. Di peak, request mencapai 174,71/s, queue p95 naik ke 6,23 detik, dan penyelesaian turun menjadi 5,41 job/s; API p95 tetap di bawah threshold. Ini menunjukkan penumpukan pekerjaan pada konfigurasi pengujian tersebut. Di recovery, sesudah beban turun dan diberi waktu drain, queue p95 kembali 84,70 ms. Variasi mesin bersama dapat memengaruhi hasil, sehingga angka ini belum menetapkan kapasitas maksimum atau stabilitas produksi jangka panjang.
 
 Queue wait dihitung dari `queued_at` ke claim pertama (`started_at`); durasi job dari `started_at` ke `finished_at`, termasuk kemungkinan tunggu lock/finalisasi. Throughput memakai waktu fase termasuk penyelesaian iterasi terakhir, bukan durasi seluruh run seperti rate submetric bawaan k6. Request/s mencakup polling. Model pengguna yang menunggu job lalu tidur 500 ms membatasi offered load ketika job melambat. Pemulihan diamati setelah jeda drain, bukan dari perpindahan beban tanpa jeda; overhead console tracing/observability terpusat juga belum diukur saat k6.
+
+### Bonus: SAST dengan CodeQL
+
+CodeQL menganalisis kode tanpa menjalankan aplikasi. Kode diubah menjadi database analisis, lalu query keamanan menelusuri aliran data dari input pengguna (source) ke titik berbahaya (sink), misalnya query SQL, path file, respons HTTP, atau log.
+
+**Konfigurasi.** Scan berjalan di GitHub Actions lewat [.github/workflows/codeql.yml](.github/workflows/codeql.yml) pada setiap push dan pull request ke `main`, setiap Senin, serta manual (`workflow_dispatch`). Query yang dipakai adalah suite `security-extended`, yang menambah query keamanan berpresisi menengah di atas suite default ([.github/codeql/codeql-config.yml](.github/codeql/codeql-config.yml)). Hasil muncul di tab *Security → Code scanning*, dan salinan SARIF setiap run disimpan sebagai artifact `codeql-sarif-<bahasa>`.
+
+**Cakupan.**
+
+| Bahasa | Mode build | Kode yang dianalisis |
+| --- | --- | --- |
+| Go | manual (`go build ./...`) | `src/` (API, worker, migration engine, auth, admin, viewer, telemetry), `scripts/benchmark`, dan `test/` |
+| JavaScript/TypeScript | none | SPA React di `frontend/src` dan `frontend/mock`. `frontend/dist` (hasil build) dan `node_modules` dikecualikan |
+
+SQL di folder `sql/` tidak dianalisis karena CodeQL tidak mendukung PL/pgSQL. Hasil bersih juga tidak berarti aplikasi pasti aman: CodeQL hanya menemukan pola yang dimodelkan query-nya, misalnya tidak memeriksa logika otorisasi per endpoint, yang diuji lewat integration test.
+
+**Hasil scan pertama** (27 November 2026, CodeQL 2.27.6, suite `security-extended`, commit `06485f2`). JavaScript/TypeScript: 103 rule dijalankan pada 163 file, **0 temuan**. Go: 35 rule dijalankan pada 126 file, **7 temuan**:
+
+| # | Rule | Severity | Lokasi | Potensi dampak | Keputusan |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `go/sql-injection` | High (8.8) | `src/database/viewer.go:231` | Parameter `schema` dan `table` dari query string masuk ke teks `SELECT * FROM ...`. Jika tidak divalidasi, pengguna dapat menyisipkan SQL ke database target. | **Diperbaiki.** Sebelumnya input sudah dicek ke `information_schema` dan di-quote manual, sehingga tidak dapat dieksploitasi. Kode diperkuat: nama tabel sekarang diambil dari baris catalog dan di-quote oleh PostgreSQL (`format('%I.%I', ...)`), sehingga teks query tidak lagi dirangkai dari input request. |
+| 2 | `go/log-injection` | Medium (6.1) | `src/auth/api.go:50` | Username dari body login ditulis ke log `auth.login_failed`; baris baru di input dapat memalsukan entri log pada logger teks. | **False positive.** Logger memakai `slog.NewJSONHandler`, yang meng-escape `\n`, `\r`, dan tanda kutip, sehingga input selalu tetap satu nilai string dalam satu baris JSON. Username dicatat dengan sengaja untuk audit login gagal. |
+| 3 | `go/log-injection` | Medium (6.1) | `src/admin/users_api.go:85` | Sama seperti di atas. | **False positive.** Field yang ditulis hanya ID user dan boolean admin; keduanya bukan teks bebas dan tetap di-escape oleh handler JSON. |
+| 4 | `go/log-injection` | Medium (6.1) | `src/api/middleware.go:21` | Route ditulis ke log `http.panic`. | **False positive.** Nilai berasal dari `c.FullPath()`, yaitu pola route yang didaftarkan server (misalnya `/api/databases/:database_id`), bukan path mentah dari pengguna; output juga JSON. |
+| 5 | `go/log-injection` | Medium (6.1) | `src/api/response.go:116` | Route ditulis ke log `http.internal_error`. | **False positive.** Sama dengan #4. |
+| 6 | `go/log-injection` | Medium (6.1) | `src/auth/csrf.go:114` | Route ditulis ke log `auth.csrf_rejected`. | **False positive.** Sama dengan #4; token CSRF sendiri tidak pernah ditulis ke log. |
+| 7 | `go/log-injection` | Medium (6.1) | `src/telemetry/middleware.go:72` | Route ditulis ke access log `http.request`. | **False positive.** Sama dengan #4. |
+
+Temuan false positive ditandai *Dismiss → False positive* di tab Code scanning beserta alasan di atas.
+
+**Scan ulang** setelah perbaikan #1 (konfigurasi dan suite yang sama): JavaScript/TypeScript tetap 0 temuan, Go turun dari 7 menjadi 6 temuan. `go/sql-injection` di `viewer.go` tidak lagi muncul, dan yang tersisa hanya enam `go/log-injection` yang sudah diputuskan false positive. Perbaikan diverifikasi dengan integration test viewer (`go test ./test/database/`), termasuk penolakan nama schema/tabel yang tidak ada.
 
 ## Built With
 
