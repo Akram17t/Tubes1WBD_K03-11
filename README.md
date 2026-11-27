@@ -126,7 +126,10 @@ Nilai lainnya (`PLATFORM_DATABASE_URL`, pengaturan session, dan pengaturan worke
 | `JOB_STALE_AFTER` | `30s` | Batas heartbeat basi sebelum recovery memeriksa job |
 | `BATCH_SIZE_DEFAULT` / `BATCH_SIZE_MAX` | `1000` / `10000` | Ukuran batch bawaan dan maksimum |
 | `LOG_LEVEL` | `info` | Level application log (`debug`, `info`, `warn`, `error`) |
-| `TRACE_EXPORTER` | `console` | `console` menulis span ke stderr, `none` mematikannya |
+| `TRACE_EXPORTER` | `console` | `console` menulis span ke stderr, `otlp` mengirim ke OpenTelemetry Collector, `none` mematikannya |
+| `LOG_EXPORTER` | `none` | `otlp` juga mengirim log ke Collector (stdout tetap jalan); bonus observability |
+| `METRICS_ADDR` | kosong | Alamat listener `/metrics` Prometheus, misalnya `:9464` (API) dan `:9465` (worker); kosong berarti mati |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | Alamat Collector untuk `otlp` (variabel standar OpenTelemetry) |
 
 ### Upgrade dari Milestone 1
 
@@ -506,6 +509,81 @@ Pada normal, queue p95 sekitar 130 ms. Di elevated, laju penyelesaian naik ke 6,
 
 Queue wait dihitung dari `queued_at` ke claim pertama (`started_at`); durasi job dari `started_at` ke `finished_at`, termasuk kemungkinan tunggu lock/finalisasi. Throughput memakai waktu fase termasuk penyelesaian iterasi terakhir, bukan durasi seluruh run seperti rate submetric bawaan k6. Request/s mencakup polling. Model pengguna yang menunggu job lalu tidur 500 ms membatasi offered load ketika job melambat. Pemulihan diamati setelah jeda drain, bukan dari perpindahan beban tanpa jeda; overhead console tracing/observability terpusat juga belum diukur saat k6.
 
+### Bonus: Observability
+
+Log, trace, dan metrik dikumpulkan ke satu Grafana sehingga satu job dapat ditelusuri dari grafik ke trace lalu ke log-nya.
+
+```
+API + worker ──OTLP (log + trace)──► OpenTelemetry Collector ──► Loki (log)
+     │                                                       └──► Tempo (trace)
+     └── /metrics (:9464, :9465) ◄── scrape ── Prometheus
+                                                   │
+                     Grafana ◄── Prometheus + Loki + Tempo (datasource saling tertaut)
+```
+
+- **Log**: handler `slog` mengirim record yang sama ke stdout (JSON, seperti sebelumnya) dan ke Collector lewat bridge `otelslog`. Log yang dikirim keluar melewati filter `LOG_LEVEL` dan masking yang sama, sehingga password, token, cookie, session, dan DSN tetap tersamar.
+- **Trace**: exporter OTLP menggantikan exporter console. Trace context tetap dipropagasikan lewat queue, jadi span API dan worker berada dalam satu trace di Tempo.
+- **Metrik**: `/metrics` dibuka di listener terpisah (`METRICS_ADDR`), bukan di port API, supaya endpoint ini tidak ikut terbuka ke pengguna. Format OpenMetrics dipakai agar histogram dapat membawa *exemplar* berupa `trace_id`.
+
+**Menjalankan.** Stack ada di [deploy/observability](deploy/observability): `compose.yaml`, konfigurasi Collector/Tempo/Prometheus, provisioning datasource Grafana, dan [dashboard JSON](deploy/observability/grafana/dashboards/migration.json).
+
+```sh
+podman-compose -f deploy/observability/compose.yaml up -d    # atau: docker compose -f ... up -d
+
+# terminal 1 dan 2 (Linux/Mac); endpoint OTLP bawaan sudah http://localhost:4318
+TRACE_EXPORTER=otlp LOG_EXPORTER=otlp METRICS_ADDR=:9464 APP_ROLE=api go run ./src
+TRACE_EXPORTER=otlp LOG_EXPORTER=otlp METRICS_ADDR=:9465 APP_ROLE=worker go run ./src
+```
+
+Di Windows (PowerShell), set variabelnya dulu, misalnya `$env:TRACE_EXPORTER="otlp"; $env:LOG_EXPORTER="otlp"; $env:METRICS_ADDR=":9464"; $env:APP_ROLE="api"; go run ./src`. Buka Grafana di http://localhost:3000, dashboard **Tubes WBD → Tubes WBD - Migration & Pool**. Prometheus ada di http://localhost:9090 (menu *Status → Targets* harus menunjukkan `api` dan `worker` *up*). Grafana sengaja dibuka tanpa login sebagai admin untuk demo lokal; jangan pakai konfigurasi ini di server bersama.
+
+**Metrik.** Label hanya memakai nilai yang jumlahnya terbatas. Job ID, user ID, dan SQL tidak pernah menjadi label; ID tersebut tetap tersedia di log dan trace.
+
+| Metrik | Jenis | Label | Isi |
+| --- | --- | --- | --- |
+| `migration_jobs` | gauge | `status` | Jumlah job per status saat ini, dihitung dari `migration_jobs` setiap scrape (hanya diekspor API supaya tidak dobel) |
+| `migration_queue_wait_seconds` | histogram | `operation` | Waktu job menunggu di queue sampai diklaim worker |
+| `migration_lock_wait_seconds` | histogram | `result` | Waktu menunggu advisory lock (`acquired`, `busy`, `target_unavailable`) |
+| `migration_execution_duration_seconds` | histogram | `operation`, `status` | Durasi attempt dari lock didapat sampai hasil dicatat |
+| `migration_job_attempts_total` | counter | `operation`, `status` | Attempt yang selesai per hasil |
+| `migration_job_retries_total` | counter | `operation` | Retry otomatis yang dijadwalkan |
+| `migration_batches_committed_total`, `migration_batch_rows_total` | counter | `direction` | Batch dan row yang sudah di-commit ke target |
+| `db_pool_connections` | gauge | `pool`, `database_id`, `state` | Koneksi `in_use` (aktif) dan `idle` untuk pool platform dan setiap pool target |
+| `db_pool_wait_total`, `db_pool_wait_seconds_total` | counter | `pool`, `database_id` | Jumlah dan total waktu menunggu koneksi kosong |
+| `db_pool_max_open_connections` | gauge | `pool`, `database_id` | Batas koneksi pool |
+
+Label `job` (`api`/`worker`) ditambahkan Prometheus dari konfigurasi scrape. `database_id` dipakai karena jumlah koneksi target terbatas dan dikelola admin.
+
+**Dashboard.** Pengujian 27 November 2026 di Fedora (Podman 5.8, PostgreSQL 18) menjalankan lima migration batch (50.000 row, batch 5.000) dan lima migration yang sengaja gagal (kolom tidak ada, SQLSTATE 42703) lewat API → approval dua leader → queue → worker.
+
+![Dashboard Grafana](screenshots/observability/grafana-dashboard.png)
+
+Panel atas menampilkan job per status, waktu tunggu queue (p50/p95), waktu tunggu lock, durasi migration, attempt per status, serta batch/row yang di-commit. Panel tengah menampilkan koneksi aktif/idle per proses dan pool beserta rata-rata waktu tunggu koneksi. Panel bawah menampilkan log job dari Loki. Titik kecil pada grafik durasi adalah exemplar; mengarahkan kursor ke titik itu menampilkan tombol untuk membuka trace-nya di Tempo.
+
+**Contoh korelasi log ↔ trace ↔ metrik** untuk job batch pertama pada pengujian di atas (`trace_id` `9d69e1bc985840a69b3cf30c8f99fd7f`).
+
+1. *Metrik → trace.* Histogram di `/metrics` worker membawa exemplar dengan `trace_id` job tersebut:
+
+   ```
+   migration_execution_duration_seconds_bucket{operation="up",status="success",le="2.43"} 1 # {trace_id="9d69e1bc985840a69b3cf30c8f99fd7f"} 1.075855179 1.795785413517518e+09
+   ```
+
+2. *Trace.* Tempo menyimpan satu trace berisi 214 span: `POST /api/.../execute` dan `workflow.execute`/`workflow.enqueue` dari `tubes-wbd-api`, lalu `queue.wait`, `worker.job`, `worker.lock_wait`, `worker.revalidate`, `worker.execute`, 10 × `execution.batch`, dan `worker.finalize` dari `tubes-wbd-worker`, termasuk span `sql.query` di setiap langkah.
+
+   ![Trace di Tempo](screenshots/observability/tempo-trace.png)
+
+3. *Trace → log.* Loki menyimpan `trace_id` dan `span_id` sebagai structured metadata, sehingga query `{service_name=~"tubes-wbd-.+"} | trace_id="9d69e1bc985840a69b3cf30c8f99fd7f"` mengembalikan log API dan worker untuk job tersebut. Datasource Tempo memakai query ini untuk tombol *Logs for this span*, dan datasource Loki menampilkan tautan *Lihat trace* dari field `trace_id`.
+
+   ![Log di Loki untuk trace yang sama](screenshots/observability/loki-logs.png)
+
+   Salah satu entri (log akses API saat tombol eksekusi ditekan), dengan label/metadata dari Loki:
+
+   ```json
+   {"service_name":"tubes-wbd-api","severity_text":"INFO","route":"/api/databases/:database_id/requests/:request_id/execute","method":"POST","status":"202","duration_ms":"15.194","request_id":"http-6ae99a66063ac57a","actor_id":"2","trace_id":"9d69e1bc985840a69b3cf30c8f99fd7f","span_id":"f07169582f910988"}
+   ```
+
+**Test.** [test/telemetry/metrics_test.go](test/telemetry/metrics_test.go) memeriksa bahwa durasi yang dicatat di dalam span membawa exemplar `trace_id`, label metrik pool dan migration hanya memakai nilai terbatas, log yang dikirim ke Collector tetap tersamar dan mengikuti `LOG_LEVEL`, serta (integration) `migration_jobs` cocok dengan isi tabel queue.
+
 ### Bonus: SAST dengan CodeQL
 
 CodeQL menganalisis kode tanpa menjalankan aplikasi. Kode diubah menjadi database analisis, lalu query keamanan menelusuri aliran data dari input pengguna (source) ke titik berbahaya (sink), misalnya query SQL, path file, respons HTTP, atau log.
@@ -547,6 +625,8 @@ Temuan false positive ditandai *Dismiss → False positive* di tab Code scanning
 - [pgx](https://github.com/jackc/pgx) - Driver PostgreSQL
 - [Argon2id](https://pkg.go.dev/golang.org/x/crypto/argon2) - Hash password
 - [Bootstrap](https://getbootstrap.com/) - Tampilan halaman
+- [OpenTelemetry](https://opentelemetry.io/) - Tracing, serta pengiriman log dan trace ke Collector
+- [Prometheus](https://prometheus.io/), [Loki](https://grafana.com/oss/loki/), [Tempo](https://grafana.com/oss/tempo/), dan [Grafana](https://grafana.com/oss/grafana/) - Bonus observability
 
 ## Contributing
 

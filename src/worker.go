@@ -7,6 +7,7 @@ import (
 
 	"tubes-wbd/src/database"
 	"tubes-wbd/src/migration"
+	"tubes-wbd/src/telemetry"
 )
 
 // runWorker menjalankan role worker sampai proses diminta berhenti.
@@ -19,6 +20,10 @@ func runWorker(ctx context.Context, config Config, platformDB *sql.DB) error {
 		return err
 	}
 	defer connections.Close()
+	if config.MetricsAddr != "" {
+		telemetry.RegisterPoolMetrics(platformDB, connections.PoolStats)
+		telemetry.ServeMetrics(ctx, config.MetricsAddr)
+	}
 	worker, err := migration.NewWorker(migration.WorkerConfig{
 		DB:      platformDB,
 		Targets: connections.Target,

@@ -100,6 +100,7 @@ func (w *Worker) runOnce(stop, ctx context.Context) (bool, error) {
 	_, wait := telemetry.Tracer().Start(ctx, "queue.wait", trace.WithTimestamp(job.EligibleAt), jobAttributes(job))
 	wait.End()
 	ctx, span := telemetry.Tracer().Start(ctx, "worker.job", trace.WithSpanKind(trace.SpanKindConsumer), jobAttributes(job))
+	telemetry.ObserveDuration(ctx, telemetry.QueueWait.WithLabelValues(job.Operation), time.Since(job.EligibleAt))
 	w.logJob(ctx, slog.LevelInfo, "job.claimed", job, JobRunning,
 		"queue_wait_ms", time.Since(job.EligibleAt).Milliseconds())
 	ran, err := w.process(ctx, job)
@@ -131,7 +132,16 @@ func (w *Worker) process(ctx context.Context, job *claimedJob) (bool, error) {
 		locked, targetErr = w.lockTarget(lockCtx, locks, job.DatabaseID)
 	}
 	endJobSpan(lockSpan, targetErr)
-	waited := time.Since(started).Milliseconds()
+	lockWait := time.Since(started)
+	waited := lockWait.Milliseconds()
+	lockResult := "busy"
+	switch {
+	case targetErr != nil:
+		lockResult = "target_unavailable"
+	case locked:
+		lockResult = "acquired"
+	}
+	telemetry.ObserveDuration(ctx, telemetry.LockWait.WithLabelValues(lockResult), lockWait)
 	if targetErr != nil {
 		w.logJob(ctx, slog.LevelWarn, "job.target_unavailable", job, JobRunning, "lock_wait_ms", waited)
 		return false, w.failBeforeAttempt(ctx, locks, job, JobResult{ErrorCode: JobErrorTargetUnavailable,
@@ -143,6 +153,7 @@ func (w *Worker) process(ctx context.Context, job *claimedJob) (bool, error) {
 		return false, w.requeue(ctx, job)
 	}
 	w.logJob(ctx, slog.LevelInfo, "job.locked", job, JobRunning, "lock_wait_ms", waited)
+	job.LockedAt = time.Now()
 
 	snapshot, rejection := w.revalidate(ctx, locks.platform, job)
 	if rejection != nil {
@@ -376,7 +387,12 @@ func (w *Worker) finalize(ctx context.Context, platform *sql.Conn, job *claimedJ
 		level = slog.LevelWarn
 	}
 	w.logJob(ctx, level, "job.attempt_finished", job, result.Status, "error_code", result.ErrorCode)
+	telemetry.JobAttempts.WithLabelValues(job.Operation, result.Status).Inc()
+	if !job.LockedAt.IsZero() {
+		telemetry.ObserveDuration(ctx, telemetry.ExecutionDuration.WithLabelValues(job.Operation, result.Status), time.Since(job.LockedAt))
+	}
 	if retry {
+		telemetry.JobRetries.WithLabelValues(job.Operation).Inc()
 		w.logJob(ctx, slog.LevelInfo, "job.retry_scheduled", job, JobQueued, "delay_ms", delay.Milliseconds())
 	}
 	return nil

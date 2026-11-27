@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: tubes-wbd
+    folder: Tubes WBD
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

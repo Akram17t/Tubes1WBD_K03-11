@@ -139,6 +139,8 @@ type claimedJob struct {
 	AutoAttempts int
 	EligibleAt   time.Time
 	Carrier      map[string]string
+	// LockedAt diisi begitu lock didapat, jadi awal hitungan durasi eksekusi buat metrics
+	LockedAt time.Time
 }
 
 const claimedColumns = `id, request_id, database_id, migration_id, revision, operation, attempt_count,

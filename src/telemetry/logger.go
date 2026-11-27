@@ -24,9 +24,12 @@ const (
 var sensitiveKeyParts = []string{"password", "secret", "token", "cookie", "authorization", "session", "dsn", "encryption_key"}
 
 // bikin logger JSON yang otomatis nambah request_id, actor_id, trace_id, span_id dari context.
-// Field "msg" bawaan slog diganti jadi "event" sesuai kontrak log M2
-func NewLogger(w io.Writer, level slog.Level) *slog.Logger {
-	base := slog.NewJSONHandler(w, &slog.HandlerOptions{Level: level, ReplaceAttr: replaceAttr})
+// Field "msg" bawaan slog diganti jadi "event". extra (misal handler OTLP) ikut nerima record yang sama
+func NewLogger(w io.Writer, level slog.Level, extra ...slog.Handler) *slog.Logger {
+	var base slog.Handler = slog.NewJSONHandler(w, &slog.HandlerOptions{Level: level, ReplaceAttr: replaceAttr})
+	if len(extra) > 0 {
+		base = slog.NewMultiHandler(append([]slog.Handler{base}, extra...)...)
+	}
 	return slog.New(contextHandler{Handler: base})
 }
 

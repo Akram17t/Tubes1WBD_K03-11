@@ -26,6 +26,8 @@ type Config struct {
 	AdminPassword           string
 	LogLevel                slog.Level
 	TraceExporter           string
+	LogExporter             string
+	MetricsAddr             string
 
 	AppRole                 string
 	WorkerConcurrency       int
@@ -89,9 +91,16 @@ func LoadConfig() (Config, error) {
 		return Config{}, err
 	}
 	config.TraceExporter = envOrDefault("TRACE_EXPORTER", telemetry.ExporterConsole)
-	if config.TraceExporter != telemetry.ExporterConsole && config.TraceExporter != telemetry.ExporterNone {
-		return Config{}, fmt.Errorf("TRACE_EXPORTER must be console or none")
+	if config.TraceExporter != telemetry.ExporterConsole && config.TraceExporter != telemetry.ExporterNone &&
+		config.TraceExporter != telemetry.ExporterOTLP {
+		return Config{}, fmt.Errorf("TRACE_EXPORTER must be console, otlp, or none")
 	}
+	// bonus observability: log juga dikirim ke Collector, metrics dibuka di listener terpisah dari API
+	config.LogExporter = envOrDefault("LOG_EXPORTER", telemetry.ExporterNone)
+	if config.LogExporter != telemetry.ExporterNone && config.LogExporter != telemetry.ExporterOTLP {
+		return Config{}, fmt.Errorf("LOG_EXPORTER must be otlp or none")
+	}
+	config.MetricsAddr = strings.TrimSpace(os.Getenv("METRICS_ADDR"))
 
 	if err := loadWorkerConfig(&config); err != nil {
 		return Config{}, err
