@@ -187,6 +187,131 @@ func TestExecutorNormalFailureRollsBackWholeTransaction(t *testing.T) {
 	if detail["status"] != "failed" || fmt.Sprint(detail["error"]) != "map[code:sql_error message:relation \"public.exec_missing\" does not exist sqlstate:42P01]" {
 		t.Fatalf("detail job gagal: %v", detail)
 	}
+	// SQL yang pernah dieksekusi tetap immutable walaupun gagal; perbaikan memakai definisi baru.
+	f.call(t, f.editor, "PATCH", fmt.Sprintf("%s/%d", base, id),
+		`{"revision":1,"sql_up":"CREATE TABLE public.exec_partial (id int)"}`, 409, "immutable_migration")
+	fixed := f.define(t, normalDefinition("Perbaikan", "CREATE TABLE public.exec_partial (id int)", "DROP TABLE public.exec_partial"))
+	f.expectJob(t, f.run(t, migration.RequestInput{MigrationID: fixed, Operation: "up"}).ID, migration.JobSuccess, "", 1)
+}
+
+func TestExecutorLinearRollbackForwardAndNewUpDropsForwardStack(t *testing.T) {
+	f := newExecutorFixture(t)
+	a := f.define(t, normalDefinition("A", "CREATE TABLE public.lin_a (id int)", "DROP TABLE public.lin_a"))
+	b := f.define(t, normalDefinition("B", "CREATE TABLE public.lin_b (id int)", "DROP TABLE public.lin_b"))
+	c := f.define(t, normalDefinition("C", "CREATE TABLE public.lin_c (id int)", "DROP TABLE public.lin_c"))
+	ok := func(input migration.RequestInput) executionRow {
+		t.Helper()
+		job := f.run(t, input)
+		f.expectJob(t, job.ID, migration.JobSuccess, "", 1)
+		return f.executions(t, job.ID)[0]
+	}
+	rejected := func(name string, input migration.RequestInput) {
+		t.Helper()
+		input.Revision = 1
+		if _, err := f.workflow.Create(context.Background(), f.Editor, 1, input); !errors.Is(err, migration.ErrConflict) {
+			t.Fatalf("%s harus ditolak: %v", name, err)
+		}
+	}
+	tables := func(want string) {
+		t.Helper()
+		got := ""
+		for _, name := range []string{"lin_a", "lin_b", "lin_c"} {
+			if f.tableExists(t, name) {
+				got += name + " "
+			}
+		}
+		if got != want {
+			t.Fatalf("tabel target %q, harusnya %q", got, want)
+		}
+	}
+
+	upA := ok(migration.RequestInput{MigrationID: a, Operation: "up"})
+	upB := ok(migration.RequestInput{MigrationID: b, Operation: "up"})
+	tables("lin_a lin_b ")
+
+	// Rollback berulang hanya boleh dari puncak stack: B dulu, lalu A.
+	rejected("rollback A saat B di atasnya", migration.RequestInput{MigrationID: a, Operation: "rollback", TargetExecutionID: &upA.id})
+	ok(migration.RequestInput{MigrationID: b, Operation: "rollback", TargetExecutionID: &upB.id})
+	ok(migration.RequestInput{MigrationID: a, Operation: "rollback", TargetExecutionID: &upA.id})
+	tables("")
+
+	// Forward berurutan memakai SQL up asli: A dulu, B tidak boleh melompat.
+	rejected("forward B melompati A", migration.RequestInput{MigrationID: b, Operation: "forward", TargetExecutionID: &upB.id})
+	ok(migration.RequestInput{MigrationID: a, Operation: "forward", TargetExecutionID: &upA.id})
+	tables("lin_a ")
+
+	// Up baru saat B masih di forward stack membuang cabang B.
+	ok(migration.RequestInput{MigrationID: c, Operation: "up"})
+	tables("lin_a lin_c ")
+	rejected("forward B dari cabang usang", migration.RequestInput{MigrationID: b, Operation: "forward", TargetExecutionID: &upB.id})
+	rejected("up B yang sudah pernah diterapkan", migration.RequestInput{MigrationID: b, Operation: "up"})
+
+	var sequences string
+	if err := f.Platform.QueryRow(`SELECT string_agg(operation || ':' || history_sequence, ' ' ORDER BY history_sequence)
+		FROM migration_executions WHERE status = 'success'`).Scan(&sequences); err != nil ||
+		sequences != "up:1 up:2 rollback:3 rollback:4 forward:5 up:6" {
+		t.Fatalf("urutan history: %s %v", sequences, err)
+	}
+}
+
+// Handler Eksekusi hanya memasukkan job ke antrean, jadi tetap cepat walaupun worker sedang menjalankan SQL lama.
+func TestExecuteReturnsImmediatelyWhileWorkerRunsLongSQL(t *testing.T) {
+	f := newExecutorFixture(t)
+	slow := f.define(t, normalDefinition("Lambat", "SELECT pg_catalog.pg_sleep(3)", "SELECT 1"))
+	running := f.submitAndExecute(t, migration.RequestInput{MigrationID: slow, Operation: "up"})
+	// Request kedua (database sama) dan ketiga (database lain) sudah disetujui sebelum worker mulai.
+	next := f.define(t, normalDefinition("Berikutnya", "CREATE TABLE public.exec_next (id int)", "DROP TABLE public.exec_next"))
+	sameDB, err := f.workflow.Create(context.Background(), f.Editor, 1, migration.RequestInput{MigrationID: next, Revision: 1, Operation: "up"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.workflow.Submit(context.Background(), f.Editor, 1, sameDB.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range []*auth.User{f.Editor, f.Viewer} {
+		if _, err := f.workflow.Approve(context.Background(), user, 1, sameDB.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	otherDB := f.approved(t, 2)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = f.worker(t).RunOnce(context.Background())
+	}()
+	// Tunggu sampai SQL lambat benar-benar berjalan di target.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var active int
+		if err := f.Target.QueryRow(`SELECT count(*) FROM pg_stat_activity
+			WHERE query LIKE '%pg_sleep(3)%' AND pid <> pg_backend_pid()`).Scan(&active); err != nil {
+			t.Fatal(err)
+		}
+		if active > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("SQL lambat tidak pernah berjalan")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	for name, request := range map[string]struct{ db, id int64 }{
+		"database sama": {1, sameDB.ID}, "database lain": {2, otherDB.ID},
+	} {
+		started := time.Now()
+		job := object(t, f.call(t, f.editor, "POST",
+			fmt.Sprintf("/api/databases/%d/requests/%d/execute", request.db, request.id), "", 202, "").Data)
+		if elapsed := time.Since(started); elapsed > time.Second || job["status"] != "queued" {
+			t.Fatalf("%s: enqueue %v menunggu worker, job %v", name, elapsed, job)
+		}
+	}
+	if f.row(t, running.ID).status != migration.JobRunning {
+		t.Fatal("job lama harusnya masih berjalan saat enqueue kembali")
+	}
+	<-done
+	f.expectJob(t, running.ID, migration.JobSuccess, "", 1)
 }
 
 // batchFixture menyiapkan 25 row bernilai 0, batch berukuran 10, dan trigger untuk memaksa batch gagal.
