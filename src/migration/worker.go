@@ -139,6 +139,10 @@ type claimedJob struct {
 	AutoAttempts int
 	EligibleAt   time.Time
 	Carrier      map[string]string
+	// AttemptStartedAt diisi setelah beginAttempt sukses, jadi durasi metrics cuma ngukur eksekusi SQL
+	AttemptStartedAt time.Time
+	// beforeAttempt nandain job yang berhenti sebelum SQL dikirim, biar ga kehitung sebagai attempt
+	beforeAttempt bool
 }
 
 const claimedColumns = `id, request_id, database_id, migration_id, revision, operation, attempt_count,

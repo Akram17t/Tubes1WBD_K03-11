@@ -143,6 +143,8 @@ func (e *Executor) applyBatch(ctx context.Context, task *JobTask, plan *executio
 	progress.LastCursor = &cursor
 	logExecution(ctx, slog.LevelInfo, "execution.batch_committed", task, executionID, "batch_number", number,
 		"direction", plan.Direction, "rows", rows)
+	telemetry.BatchesCommitted.WithLabelValues(plan.Direction).Inc()
+	telemetry.RowsCommitted.WithLabelValues(plan.Direction).Add(float64(rows))
 	// Target sudah commit. Bila salinan platform gagal ditulis, rekonsiliasi melengkapinya dari ledger.
 	if err := e.endBatch(bookkeeping, attemptID, "success", rows, nil); err == nil {
 		err = e.saveProgress(bookkeeping, task, executionID, progress)

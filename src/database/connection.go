@@ -378,6 +378,17 @@ func (s *ConnectionService) commitConfiguration(tx *sql.Tx, id int64) error {
 	return nil
 }
 
+// snapshot statistik semua pool target yang lagi kebuka, dipakai metrics /metrics
+func (s *ConnectionService) PoolStats() map[int64]sql.DBStats {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	stats := make(map[int64]sql.DBStats, len(s.pools))
+	for id, cached := range s.pools {
+		stats[id] = cached.pool.Stats()
+	}
+	return stats
+}
+
 func (s *ConnectionService) invalidateTarget(id int64) {
 	s.invalidatePool(id, nil)
 }

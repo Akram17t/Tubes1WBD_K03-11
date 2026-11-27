@@ -34,18 +34,22 @@ func run(ctx context.Context) error {
 	}
 
 	// log JSON ke stdout, span console ke stderr biar stream log tetap rapi
-	slog.SetDefault(telemetry.NewLogger(os.Stdout, config.LogLevel))
-	shutdownTracing, err := telemetry.SetupTracing("tubes-wbd-"+config.AppRole, config.TraceExporter, os.Stderr)
+	serviceName := "tubes-wbd-" + config.AppRole
+	logExport, shutdownLogs, err := telemetry.SetupLogs(serviceName, config.LogExporter, config.LogLevel)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := shutdownTracing(flushCtx); err != nil {
-			slog.Error("tracing.shutdown_failed", "error", err.Error())
-		}
-	}()
+	defer flushTelemetry("logs", shutdownLogs)
+	if logExport != nil {
+		slog.SetDefault(telemetry.NewLogger(os.Stdout, config.LogLevel, logExport))
+	} else {
+		slog.SetDefault(telemetry.NewLogger(os.Stdout, config.LogLevel))
+	}
+	shutdownTracing, err := telemetry.SetupTracing(serviceName, config.TraceExporter, os.Stderr)
+	if err != nil {
+		return err
+	}
+	defer flushTelemetry("tracing", shutdownTracing)
 
 	platformDB, err := platformdb.Connect(ctx, config.PlatformDatabaseURL)
 	if err != nil {
@@ -67,6 +71,14 @@ func run(ctx context.Context) error {
 		return err
 	}
 	defer connections.Close()
+	if config.MetricsAddr != "" {
+		// status job cuma diekspor API biar ga dobel kalau worker-nya lebih dari satu
+		telemetry.RegisterPoolMetrics(platformDB, connections.PoolStats)
+		telemetry.RegisterJobStatusMetrics(platformDB)
+		if err := telemetry.ServeMetrics(ctx, config.MetricsAddr); err != nil {
+			return err
+		}
+	}
 	deps := Dependencies{Config: config, PlatformDB: platformDB, TargetDB: connections.Target, TargetConnections: connections}
 	recoveryCtx, cancelRecovery := context.WithTimeout(ctx, 10*time.Second)
 	if err := migration.RecoverRunning(recoveryCtx, platformDB, deps.TargetDB); err != nil {
@@ -102,5 +114,14 @@ func run(ctx context.Context) error {
 			return fmt.Errorf("shut down HTTP server: %w", err)
 		}
 		return nil
+	}
+}
+
+// flush sisa span/log sebelum proses keluar, dibatasi 5 detik biar shutdown ga nyangkut
+func flushTelemetry(name string, shutdown func(context.Context) error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := shutdown(ctx); err != nil {
+		slog.Error(name+".shutdown_failed", "error", err.Error())
 	}
 }
