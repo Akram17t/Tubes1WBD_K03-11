@@ -225,9 +225,20 @@ func GetTableData(ctx context.Context, db *sql.DB, schema, table string, limit, 
 	if err := checkTable(ctx, db, schema, table); err != nil {
 		return nil, err
 	}
+	// Nama tabel di-quote oleh PostgreSQL (format %I) dari baris catalog, bukan dirangkai dari input request.
+	var qualified string
+	if err := db.QueryRowContext(ctx, `
+		SELECT pg_catalog.format('%I.%I', table_schema, table_name)
+		FROM information_schema.tables
+		WHERE table_schema = $1 AND table_name = $2 AND table_type = 'BASE TABLE'
+	`, schema, table).Scan(&qualified); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrTableNotFound
+		}
+		return nil, err
+	}
 
-	query := `SELECT * FROM ` + quoteIdentifier(schema) + `.` + quoteIdentifier(table) +
-		` ORDER BY tableoid, ctid LIMIT $1 OFFSET $2`
+	query := `SELECT * FROM ` + qualified + ` ORDER BY tableoid, ctid LIMIT $1 OFFSET $2`
 	rows, err := db.QueryContext(ctx, query, limit+1, offset)
 	if err != nil {
 		return nil, err
@@ -334,8 +345,4 @@ func checkTable(ctx context.Context, db *sql.DB, schema, table string) error {
 		return ErrTableNotFound
 	}
 	return nil
-}
-
-func quoteIdentifier(name string) string {
-	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
