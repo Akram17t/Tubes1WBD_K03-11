@@ -557,7 +557,7 @@ Definisi queue wait di sini berbeda dari bagian k6. k6 mengukur `queued_at` samp
 
 Label `job` (`api`/`worker`) ditambahkan Prometheus dari konfigurasi scrape. `database_id` dipakai karena jumlah koneksi target terbatas dan dikelola admin.
 
-**Dashboard.** Pengujian 27 November 2026 di Fedora (Podman 5.8, PostgreSQL 18) menjalankan lima migration batch (50.000 row, batch 5.000) dan lima migration yang sengaja gagal (kolom tidak ada, SQLSTATE 42703) lewat API → approval dua leader → queue → worker.
+**Dashboard.** Pengujian 27 November 2026 di Fedora (Podman 5.8, PostgreSQL 18) menjalankan lima migration batch (50.000 row, batch 5.000) dan lima migration yang sengaja gagal (kolom tidak ada, SQLSTATE 42703) lewat API → approval dua leader → queue → worker. Di sela-selanya, akses edit grup dicabut tepat setelah execute pada tiga job. Dua job ditolak saat revalidasi dan tampil sebagai seri biru *berhenti sebelum SQL: forbidden*, bukan sebagai attempt (status job-nya tetap `failed`), sedangkan satu job sempat dieksekusi worker sebelum akses dicabut. Karena itu panel status menunjukkan 6 sukses dan 7 gagal.
 
 ![Dashboard Grafana](screenshots/observability/grafana-dashboard.png)
 
