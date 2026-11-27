@@ -507,7 +507,7 @@ K6 berakhir dengan exit code 0; seluruh threshold lolos dan 14.445 check berhasi
 
 Pada normal, queue p95 sekitar 130 ms. Di elevated, laju penyelesaian naik ke 6,35 job/s tetapi antrean bertambah. Di peak, request mencapai 174,71/s, queue p95 naik ke 6,23 detik, dan penyelesaian turun menjadi 5,41 job/s; API p95 tetap di bawah threshold. Ini menunjukkan penumpukan pekerjaan pada konfigurasi pengujian tersebut. Di recovery, sesudah beban turun dan diberi waktu drain, queue p95 kembali 84,70 ms. Variasi mesin bersama dapat memengaruhi hasil, sehingga angka ini belum menetapkan kapasitas maksimum atau stabilitas produksi jangka panjang.
 
-Queue wait dihitung dari `queued_at` ke claim pertama (`started_at`); durasi job dari `started_at` ke `finished_at`, termasuk kemungkinan tunggu lock/finalisasi. Throughput memakai waktu fase termasuk penyelesaian iterasi terakhir, bukan durasi seluruh run seperti rate submetric bawaan k6. Request/s mencakup polling. Model pengguna yang menunggu job lalu tidur 500 ms membatasi offered load ketika job melambat. Pemulihan diamati setelah jeda drain, bukan dari perpindahan beban tanpa jeda; overhead console tracing/observability terpusat juga belum diukur saat k6.
+Queue wait dihitung dari `queued_at` ke claim pertama (`started_at`); durasi job dari `started_at` ke `finished_at`, termasuk kemungkinan tunggu lock/finalisasi. Throughput memakai waktu fase termasuk penyelesaian iterasi terakhir, bukan durasi seluruh run seperti rate submetric bawaan k6. Request/s mencakup polling. Model pengguna yang menunggu job lalu tidur 500 ms membatasi offered load ketika job melambat. Pemulihan diamati setelah jeda drain, bukan dari perpindahan beban tanpa jeda; overhead observability terpusat diukur terpisah di bagian [Bonus: Observability](#bonus-observability).
 
 ### Bonus: Observability
 
@@ -572,7 +572,7 @@ Panel atas menampilkan job per status, waktu tunggu queue (p50/p95), waktu tungg
 
    ![Trace di Tempo](screenshots/observability/tempo-trace.png)
 
-3. *Trace → log.* Loki menyimpan `trace_id` dan `span_id` sebagai structured metadata, sehingga query `{service_name=~"tubes-wbd-.+"} | trace_id="9d69e1bc985840a69b3cf30c8f99fd7f"` mengembalikan log API dan worker untuk job tersebut. Datasource Tempo memakai query ini untuk tombol *Logs for this span*, dan datasource Loki menampilkan tautan *Lihat trace* dari field `trace_id`.
+3. *Trace → log.* Loki menyimpan `trace_id` dan `span_id` sebagai structured metadata, sehingga query `{service_name=~"tubes-wbd-.+"} | trace_id="9d69e1bc985840a69b3cf30c8f99fd7f"` mengembalikan log API dan worker untuk job tersebut. Tombol log di setiap span Tempo (*Explore the logs for this in split view*) membuka query ini di panel Loki bersebelahan, dan setiap baris log di Loki punya tautan *Lihat trace* yang membuka trace-nya di Tempo. Kedua arah sudah dicoba dengan klik langsung di Grafana.
 
    ![Log di Loki untuk trace yang sama](screenshots/observability/loki-logs.png)
 
@@ -581,6 +581,17 @@ Panel atas menampilkan job per status, waktu tunggu queue (p50/p95), waktu tungg
    ```json
    {"service_name":"tubes-wbd-api","severity_text":"INFO","route":"/api/databases/:database_id/requests/:request_id/execute","method":"POST","status":"202","duration_ms":"15.194","request_id":"http-6ae99a66063ac57a","actor_id":"2","trace_id":"9d69e1bc985840a69b3cf30c8f99fd7f","span_id":"f07169582f910988"}
    ```
+
+**Overhead saat stress test.** Skenario k6 di atas dijalankan dua kali pada 27 November 2026 di Fedora (Podman 5.8, PostgreSQL 18, k6 2.4.0 lewat image `grafana/k6`; aplikasi, database, stack observability, dan k6 berbagi satu mesin). Database platform dan target dibuat ulang sebelum setiap run. Keduanya memakai `LOG_LEVEL=warn`, worker concurrency 2, dan polling 100 ms. Run A tanpa export (`TRACE_EXPORTER=none`), run B dengan `TRACE_EXPORTER=otlp`, `LOG_EXPORTER=otlp`, dan `/metrics` yang di-scrape Prometheus setiap 5 detik.
+
+| Fase | VU | API p95 (ms) A → B | Request/s A → B | Job/s A → B | Queue p95 (ms) A → B |
+| --- | --- | --- | --- | --- | --- |
+| Normal | 2 | 4,33 → 4,45 | 17,00 → 16,90 | 2,60 → 2,60 | 97 → 98 |
+| Elevated | 8 | 3,46 → 3,71 | 69,35 → 69,02 | 10,22 → 10,20 | 160 → 155 |
+| Peak | 24 | 4,35 → 8,69 | 215,96 → 213,61 | 15,86 → 15,33 | 868 → 1.271 |
+| Recovery | 2 | 4,55 → 4,31 | 17,21 → 16,90 | 2,77 → 2,70 | 96 → 97 |
+
+Kedua run lolos semua threshold dengan error API 0%. Semua job berakhir sukses (A: 645, B: 638), dan kenaikan counter kedua target sama dengan jumlah job, sehingga tidak ada UPDATE ganda. Pada beban normal sampai elevated, selisihnya masih dalam variasi pengukuran. Pada peak, API p95 naik sekitar 4 ms, throughput job turun sekitar 3%, dan queue p95 naik sekitar 0,4 detik karena span dan log diekspor dari proses yang sama selagi CPU dibagi dengan Collector, Loki, Tempo, Prometheus, dan Grafana di mesin yang sama. Ini hasil satu run per konfigurasi, jadi angkanya menunjukkan besaran overhead, bukan nilai pasti. Selama run B, Prometheus mencatat 638 attempt sukses dan Tempo menyimpan trace `worker.job` untuk setiap job, sehingga data observability tetap lengkap di bawah beban.
 
 **Test.** [test/telemetry/metrics_test.go](test/telemetry/metrics_test.go) memeriksa bahwa durasi yang dicatat di dalam span membawa exemplar `trace_id`, label metrik pool dan migration hanya memakai nilai terbatas, log yang dikirim ke Collector tetap tersamar dan mengikuti `LOG_LEVEL`, serta (integration) `migration_jobs` cocok dengan isi tabel queue.
 
