@@ -75,7 +75,9 @@ func run(ctx context.Context) error {
 		// status job cuma diekspor API biar ga dobel kalau worker-nya lebih dari satu
 		telemetry.RegisterPoolMetrics(platformDB, connections.PoolStats)
 		telemetry.RegisterJobStatusMetrics(platformDB)
-		telemetry.ServeMetrics(ctx, config.MetricsAddr)
+		if err := telemetry.ServeMetrics(ctx, config.MetricsAddr); err != nil {
+			return err
+		}
 	}
 	deps := Dependencies{Config: config, PlatformDB: platformDB, TargetDB: connections.Target, TargetConnections: connections}
 	recoveryCtx, cancelRecovery := context.WithTimeout(ctx, 10*time.Second)

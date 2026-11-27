@@ -153,7 +153,6 @@ func (w *Worker) process(ctx context.Context, job *claimedJob) (bool, error) {
 		return false, w.requeue(ctx, job)
 	}
 	w.logJob(ctx, slog.LevelInfo, "job.locked", job, JobRunning, "lock_wait_ms", waited)
-	job.LockedAt = time.Now()
 
 	snapshot, rejection := w.revalidate(ctx, locks.platform, job)
 	if rejection != nil {
@@ -168,6 +167,7 @@ func (w *Worker) process(ctx context.Context, job *claimedJob) (bool, error) {
 	if err := w.beginAttempt(ctx, locks.platform, job); err != nil {
 		return false, err
 	}
+	job.AttemptStartedAt = time.Now()
 	w.logJob(ctx, slog.LevelInfo, "job.attempt_started", job, JobRunning)
 	executeCtx, executeSpan := telemetry.Tracer().Start(ctx, "worker.execute", jobAttributes(job),
 		trace.WithAttributes(attribute.Int("attempt", job.Attempt)))
@@ -316,6 +316,7 @@ func (w *Worker) failBeforeAttempt(ctx context.Context, locks *jobLocks, job *cl
 		}
 	}
 	result.Status = stoppedStatus(job.Operation, job.Progress)
+	job.beforeAttempt = true
 	return w.finalize(ctx, locks.platform, job, result)
 }
 
@@ -387,9 +388,13 @@ func (w *Worker) finalize(ctx context.Context, platform *sql.Conn, job *claimedJ
 		level = slog.LevelWarn
 	}
 	w.logJob(ctx, level, "job.attempt_finished", job, result.Status, "error_code", result.ErrorCode)
-	telemetry.JobAttempts.WithLabelValues(job.Operation, result.Status).Inc()
-	if !job.LockedAt.IsZero() {
-		telemetry.ObserveDuration(ctx, telemetry.ExecutionDuration.WithLabelValues(job.Operation, result.Status), time.Since(job.LockedAt))
+	if job.beforeAttempt {
+		telemetry.JobsStoppedBeforeExecution.WithLabelValues(result.ErrorCode).Inc()
+	} else {
+		telemetry.JobAttempts.WithLabelValues(job.Operation, result.Status).Inc()
+	}
+	if !job.AttemptStartedAt.IsZero() {
+		telemetry.ObserveDuration(ctx, telemetry.ExecutionDuration.WithLabelValues(job.Operation, result.Status), time.Since(job.AttemptStartedAt))
 	}
 	if retry {
 		telemetry.JobRetries.WithLabelValues(job.Operation).Inc()

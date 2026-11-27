@@ -77,7 +77,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Dari job masuk antrean sampai diklaim worker. Titik exemplar membuka trace di Tempo.",
+      "description": "Dari job bisa diklaim (next_attempt_at) sampai diklaim worker, dicatat tiap klaim; requeue karena lock sibuk memulai hitungan baru. Titik exemplar membuka trace di Tempo.",
       "gridPos": {
         "x": 8,
         "y": 1,
@@ -172,7 +172,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Dari lock didapat sampai hasil attempt dicatat, per operasi (up/rollback/forward/compensate).",
+      "description": "Dari SQL mulai dijalankan (setelah revalidasi) sampai hasil attempt dicatat, per operasi.",
       "gridPos": {
         "x": 0,
         "y": 9,
@@ -215,7 +215,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Attempt job yang selesai per hasil, ditambah retry otomatis yang dijadwalkan worker.",
+      "description": "Attempt job yang selesai per hasil, retry otomatis yang dijadwalkan, dan job yang berhenti sebelum SQL dikirim (bukan attempt).",
       "gridPos": {
         "x": 8,
         "y": 9,
@@ -236,6 +236,15 @@
           "expr": "sum(increase(migration_job_retries_total[$__rate_interval]))",
           "legendFormat": "retry dijadwalkan",
           "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "expr": "sum by (reason) (increase(migration_job_stopped_before_execution_total[$__rate_interval]))",
+          "legendFormat": "berhenti sebelum SQL: {{reason}}",
+          "refId": "C",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"

@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -22,17 +24,20 @@ var (
 	durationBuckets = prometheus.ExponentialBuckets(0.01, 3, 12)
 
 	QueueWait = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name: "migration_queue_wait_seconds", Help: "Waktu job menunggu di queue sampai diklaim worker.", Buckets: durationBuckets,
+		Name: "migration_queue_wait_seconds", Help: "Waktu dari job bisa diklaim (next_attempt_at) sampai diklaim worker, dicatat tiap klaim.", Buckets: durationBuckets,
 	}, []string{"operation"})
 	LockWait = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "migration_lock_wait_seconds", Help: "Waktu worker menunggu advisory lock database.", Buckets: durationBuckets,
 	}, []string{"result"})
 	ExecutionDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name: "migration_execution_duration_seconds", Help: "Durasi attempt migration dari lock didapat sampai hasil dicatat.", Buckets: durationBuckets,
+		Name: "migration_execution_duration_seconds", Help: "Durasi attempt migration dari SQL mulai dijalankan sampai hasil dicatat.", Buckets: durationBuckets,
 	}, []string{"operation", "status"})
 	JobAttempts = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "migration_job_attempts_total", Help: "Attempt job yang selesai per hasil.",
 	}, []string{"operation", "status"})
+	JobsStoppedBeforeExecution = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "migration_job_stopped_before_execution_total", Help: "Job yang berhenti sebelum SQL dikirim (revalidasi ditolak, target mati, worker terhenti).",
+	}, []string{"reason"})
 	JobRetries = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "migration_job_retries_total", Help: "Retry otomatis yang dijadwalkan worker.",
 	}, []string{"operation"})
@@ -54,22 +59,27 @@ func ObserveDuration(ctx context.Context, observer prometheus.Observer, d time.D
 	observer.Observe(d.Seconds())
 }
 
-// buka /metrics di listener sendiri (bukan port API) biar endpoint ini ga ikut kebuka ke publik.
+// buka /metrics di listener sendiri (bukan port API). Listen dulu di sini biar port bentrok langsung bikin proses gagal.
 // Format OpenMetrics dinyalakan karena exemplar cuma kekirim lewat format itu
-func ServeMetrics(ctx context.Context, addr string) {
+func ServeMetrics(ctx context.Context, addr string) error {
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("metrics listener %s: %w", addr, err)
+	}
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{EnableOpenMetrics: true}))
-	server := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		<-ctx.Done()
 		_ = server.Close()
 	}()
 	go func() {
-		slog.Info("metrics.server_started", "addr", addr)
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		slog.Info("metrics.server_started", "addr", listener.Addr().String())
+		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("metrics.server_failed", "error", SafeError(err))
 		}
 	}()
+	return nil
 }
 
 // PoolSource ngasih snapshot statistik pool per database target (key = database_id).

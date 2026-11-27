@@ -22,7 +22,9 @@ func runWorker(ctx context.Context, config Config, platformDB *sql.DB) error {
 	defer connections.Close()
 	if config.MetricsAddr != "" {
 		telemetry.RegisterPoolMetrics(platformDB, connections.PoolStats)
-		telemetry.ServeMetrics(ctx, config.MetricsAddr)
+		if err := telemetry.ServeMetrics(ctx, config.MetricsAddr); err != nil {
+			return err
+		}
 	}
 	worker, err := migration.NewWorker(migration.WorkerConfig{
 		DB:      platformDB,

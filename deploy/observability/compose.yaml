@@ -8,7 +8,7 @@ services:
     volumes:
       - ./otel-collector.yaml:/etc/otelcol/config.yaml:ro,z
     ports:
-      - "4318:4318" # OTLP HTTP dari API dan worker
+      - "127.0.0.1:4318:4318" # OTLP HTTP dari API dan worker; cuma loopback biar ga ada yang kirim log/trace palsu dari jaringan
     depends_on: [loki, tempo]
 
   loki:
@@ -32,7 +32,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway" # /metrics API dan worker jalan di host
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
 
   grafana:
     image: docker.io/grafana/grafana:12.0.0
@@ -44,5 +44,5 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro,z
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro,z
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000" # Grafana anonymous Admin, jadi wajib loopback saja
     depends_on: [prometheus, loki, tempo]

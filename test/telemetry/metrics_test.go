@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"log/slog"
+	"net"
 	"os"
 	"strings"
 	"testing"
@@ -55,6 +56,18 @@ func TestObserveDurationAddsTraceExemplar(t *testing.T) {
 	}
 }
 
+// port metrics yang sudah dipakai harus bikin proses gagal, bukan jalan diam-diam tanpa metrics
+func TestServeMetricsFailsWhenPortTaken(t *testing.T) {
+	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer taken.Close()
+	if err := telemetry.ServeMetrics(t.Context(), taken.Addr().String()); err == nil {
+		t.Fatal("ServeMetrics harus mengembalikan error kalau port sudah dipakai")
+	}
+}
+
 // pool platform dan target keluar dengan label pool/database_id/state saja, tanpa koneksi beneran
 func TestPoolCollectorLabels(t *testing.T) {
 	platform := openUnconnected(t)
@@ -81,10 +94,10 @@ db_pool_max_open_connections{database_id="3",pool="target"} 7
 
 // metric worker cuma boleh pakai label bernilai terbatas, bukan job/user ID atau SQL
 func TestMigrationMetricLabelsStayLowCardinality(t *testing.T) {
-	allowed := map[string]bool{"operation": true, "status": true, "result": true, "direction": true}
+	allowed := map[string]bool{"operation": true, "status": true, "result": true, "direction": true, "reason": true}
 	collectors := map[string]prometheus.Collector{
 		"queue_wait": telemetry.QueueWait, "lock_wait": telemetry.LockWait, "duration": telemetry.ExecutionDuration,
-		"attempts": telemetry.JobAttempts, "retries": telemetry.JobRetries,
+		"attempts": telemetry.JobAttempts, "stopped": telemetry.JobsStoppedBeforeExecution, "retries": telemetry.JobRetries,
 		"batches": telemetry.BatchesCommitted, "rows": telemetry.RowsCommitted,
 	}
 	for name, collector := range collectors {
